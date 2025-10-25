@@ -6,8 +6,8 @@ A full-stack mobile application featuring an AI-powered chatbot with Retrieval-A
 
 This project consists of two main components:
 
-- **Mobile App** (`rag_study_chatbot/`): A cross-platform React Native mobile application built with Expo
-- **Backend Server** (`server/`): A Python Flask REST API that interfaces with AWS services including Bedrock, DynamoDB, S3, and Cognito
+- **Mobile App** (`study_chatbot/`): A cross-platform React Native mobile application built with Expo
+- **Backend Server** (`server/`): A Python Flask REST API that interfaces with AWS services, including Bedrock, DynamoDB, S3, and Cognito
 
 ## Features
 
