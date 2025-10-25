@@ -16,7 +16,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.studychatbot.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photos to let you select and share images.",
+        "NSCameraUsageDescription": "This app needs access to your camera to let you take and share photos."
       }
     },
     "android": {
@@ -26,7 +28,13 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.studychatbot.app"
+      "package": "com.studychatbot.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,7 +42,14 @@
     "plugins": [
       "expo-dev-client",
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app needs access to your photos to let you select and share images.",
+          "cameraPermission": "This app needs access to your camera to let you take and share photos."
+        }
+      ]
     ],
     "extra": {
       "eas": {

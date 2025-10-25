@@ -20,6 +20,7 @@ interface Message {
     isUser: boolean;
     timestamp: Date;
     backendTimestamp?: string; // ISO timestamp from backend
+    images?: string[]; // Image URIs
 }
 
 interface ChatContextType {
@@ -31,7 +32,7 @@ interface ChatContextType {
     currentModelName: string;
     availableModels: Model[];
     setInputValue: (value: string) => void;
-    sendMessage: (message: string) => void;
+    sendMessage: (message: string, images?: string[]) => void;
     startNewChat: () => void;
     loadChat: (chatId: string) => Promise<void>;
     refreshChatHistory: () => Promise<void>;
@@ -299,8 +300,8 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
 
-    const sendMessage = async (message: string) => {
-        if (!message.trim()) return;
+    const sendMessage = async (message: string, images?: string[]) => {
+        if (!message.trim() && (!images || images.length === 0)) return;
 
         const newMessageId = messageIdCounter;
         setMessageIdCounter(messageIdCounter + 1);
@@ -311,6 +312,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             content: message.trim(),
             isUser: true,
             timestamp: new Date(),
+            images: images,
         };
 
         setMessages(prev => [...prev, userMessage]);

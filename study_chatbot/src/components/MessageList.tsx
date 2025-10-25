@@ -7,6 +7,8 @@ import {
     ActivityIndicator,
     TouchableOpacity,
     Animated,
+    Image,
+    ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useClipboard } from '../hooks/useClipboard';
@@ -17,6 +19,7 @@ interface Message {
     isUser: boolean;
     timestamp: Date;
     backendTimestamp?: string; // ISO timestamp from backend (for delete/edit operations)
+    images?: string[]; // Image URIs
 }
 
 interface MessageListProps {
@@ -89,12 +92,33 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
                     </Text>
                 </View>
 
-                <Text style={[
-                    styles.messageText,
-                    message.isUser ? styles.userMessageText : styles.botMessageText,
-                ]}>
-                    {message.content}
-                </Text>
+                {/* Image attachments */}
+                {message.images && message.images.length > 0 && (
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.imageContainer}
+                        contentContainerStyle={styles.imageContent}
+                    >
+                        {message.images.map((imageUri, index) => (
+                            <Image
+                                key={index}
+                                source={{ uri: imageUri }}
+                                style={styles.messageImage}
+                                resizeMode="cover"
+                            />
+                        ))}
+                    </ScrollView>
+                )}
+
+                {message.content && (
+                    <Text style={[
+                        styles.messageText,
+                        message.isUser ? styles.userMessageText : styles.botMessageText,
+                    ]}>
+                        {message.content}
+                    </Text>
+                )}
 
                 {/* Action buttons */}
                 <View style={styles.actionButtons}>
@@ -455,6 +479,19 @@ const styles = StyleSheet.create({
     },
     menuItemTextDestructive: {
         color: '#FF3B30',
+    },
+    // Image styles
+    imageContainer: {
+        marginBottom: 8,
+    },
+    imageContent: {
+        gap: 8,
+    },
+    messageImage: {
+        width: 150,
+        height: 150,
+        borderRadius: 8,
+        backgroundColor: '#F0F0F0',
     },
 });
 

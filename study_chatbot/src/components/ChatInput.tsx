@@ -7,13 +7,17 @@ import {
     Platform,
     Text,
     Modal,
+    Image,
+    ScrollView,
+    Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 
 interface ChatInputProps {
     value: string;
     onChangeText: (text: string) => void;
-    onSend: (message: string) => void;
+    onSend: (message: string, images?: string[]) => void;
     isLoading: boolean;
 }
 
@@ -25,10 +29,12 @@ const ChatInput: React.FC<ChatInputProps> = ({
 }) => {
     const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
     const [inputHeight, setInputHeight] = useState(48);
+    const [selectedImages, setSelectedImages] = useState<string[]>([]);
 
     const handleSend = () => {
-        if (value.trim() && !isLoading) {
-            onSend(value.trim());
+        if ((value.trim() || selectedImages.length > 0) && !isLoading) {
+            onSend(value.trim(), selectedImages.length > 0 ? selectedImages : undefined);
+            setSelectedImages([]);
         }
     };
 
@@ -43,26 +49,101 @@ const ChatInput: React.FC<ChatInputProps> = ({
         setShowAttachmentMenu(true);
     };
 
-    const handleTakePhoto = () => {
+    const handleTakePhoto = async () => {
         setShowAttachmentMenu(false);
-        // UI only - no functionality yet
-        console.log('Take photo selected');
+
+        try {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Camera Permission Required',
+                    'Please grant camera permissions to take photos.',
+                    [{ text: 'OK' }]
+                );
+                return;
+            }
+
+            const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: 'images',
+                allowsEditing: false,
+                quality: 0.8,
+                base64: false,
+            });
+
+            if (!result.canceled && result.assets && result.assets[0]) {
+                const imageUri = result.assets[0].uri;
+                setSelectedImages(prev => [...prev, imageUri]);
+            }
+        } catch (error: any) {
+            console.error('Error capturing image:', error);
+            Alert.alert('Error', `Failed to capture image: ${error.message || 'Unknown error'}`);
+        }
     };
 
-    const handleImageFromLibrary = () => {
+    const handleImageFromLibrary = async () => {
         setShowAttachmentMenu(false);
-        // UI only - no functionality yet
-        console.log('Image from library selected');
+
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Photo Library Permission Required',
+                    'Please grant photo library permissions to select images.',
+                    [{ text: 'OK' }]
+                );
+                return;
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: 'images',
+                allowsEditing: false,
+                quality: 0.8,
+                base64: false,
+            });
+
+            if (!result.canceled && result.assets && result.assets[0]) {
+                const imageUri = result.assets[0].uri;
+                setSelectedImages(prev => [...prev, imageUri]);
+            }
+        } catch (error: any) {
+            console.error('Error picking image:', error);
+            Alert.alert('Error', `Failed to select image: ${error.message || 'Unknown error'}`);
+        }
     };
 
     const handleDocumentPicker = () => {
         setShowAttachmentMenu(false);
-        // UI only - no functionality yet
         console.log('Document picker selected');
+    };
+
+    const removeImage = (index: number) => {
+        setSelectedImages(prev => prev.filter((_, i) => i !== index));
     };
 
     return (
         <View style={styles.container}>
+            {/* Image Preview */}
+            {selectedImages.length > 0 && (
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.imagePreviewContainer}
+                    contentContainerStyle={styles.imagePreviewContent}
+                >
+                    {selectedImages.map((imageUri, index) => (
+                        <View key={index} style={styles.imagePreviewWrapper}>
+                            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+                            <TouchableOpacity
+                                style={styles.removeImageButton}
+                                onPress={() => removeImage(index)}
+                            >
+                                <Ionicons name="close-circle" size={20} color="#FF3B30" />
+                            </TouchableOpacity>
+                        </View>
+                    ))}
+                </ScrollView>
+            )}
+
             <View style={styles.inputContainer}>
                 <TouchableOpacity
                     style={styles.attachmentButton}
@@ -95,11 +176,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 <TouchableOpacity
                     style={[
                         styles.sendButton,
-                        (!value.trim() || isLoading) &&
+                        ((!value.trim() && selectedImages.length === 0) || isLoading) &&
                             styles.sendButtonDisabled,
                     ]}
                     onPress={handleSend}
-                    disabled={!value.trim() || isLoading}
+                    disabled={(!value.trim() && selectedImages.length === 0) || isLoading}
                 >
                     <Text style={styles.sendButtonText}>→</Text>
                 </TouchableOpacity>
@@ -339,6 +420,37 @@ const styles = StyleSheet.create({
     },
     cancelText: {
         color: '#FF3B30',
+    },
+    // Image preview styles
+    imagePreviewContainer: {
+        maxHeight: 80,
+        paddingVertical: 8,
+        marginBottom: 8,
+    },
+    imagePreviewContent: {
+        paddingHorizontal: 8,
+    },
+    imagePreviewWrapper: {
+        position: 'relative',
+        marginRight: 12,
+    },
+    imagePreview: {
+        width: 56,
+        height: 56,
+        borderRadius: 8,
+        backgroundColor: '#F0F0F0',
+    },
+    removeImageButton: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+        elevation: 2,
     },
 });
 
