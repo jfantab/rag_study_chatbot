@@ -34,6 +34,7 @@ export default function ChatScreen() {
         refreshChatHistory,
         deleteChat,
         deleteMessage,
+        editMessage,
         setCurrentModelName,
     } = useChat();
 
@@ -97,6 +98,7 @@ export default function ChatScreen() {
                             messages={messages}
                             isLoading={isLoading}
                             onDeleteMessage={deleteMessage}
+                            onEditMessage={editMessage}
                         />
                         <ChatInput
                             value={inputValue}

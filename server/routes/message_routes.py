@@ -74,6 +74,9 @@ def edit_message(authenticated_user_id):
     """
     try:
         data = request.get_json()
+        print(f"📨 Edit message request received:")
+        print(f"   User ID: {authenticated_user_id}")
+        print(f"   Request data: {data}")
 
         if 'msg_id' not in data or 'new_content' not in data:
             return jsonify({"error": "msg_id and new_content are required"}), 400
@@ -87,15 +90,32 @@ def edit_message(authenticated_user_id):
         message_timestamp = data.get("message_timestamp")
         new_content = data["new_content"]
 
+        print(f"📝 Editing message:")
+        print(f"   msg_id: {msg_id}")
+        print(f"   message_index: {message_index}")
+        print(f"   message_timestamp: {message_timestamp}")
+        print(f"   new_content: {new_content[:100]}...")
+
         # Get current model ID
         current_model = get_current_model_info()
         current_model_id = current_model.get('model_id', 'anthropic.claude-3-5-sonnet-20240620-v1:0')
+        print(f"🤖 Using model: {current_model_id}")
 
         # Create query function for AI response generation
         def query_fn(content):
-            return query_bedrock(content, "", authenticated_user_id, None, None, current_model_id, BEDROCK_API_URL)
+            print(f"🔄 query_fn called with content: {content[:100]}...")
+            try:
+                result = query_bedrock(content, "", authenticated_user_id, None, None, current_model_id, BEDROCK_API_URL)
+                print(f"✅ query_bedrock returned (type: {type(result)}): {str(result)[:200]}")
+                return result
+            except Exception as e:
+                print(f"❌ query_bedrock failed: {str(e)}")
+                import traceback
+                print(f"❌ Traceback:\n{traceback.format_exc()}")
+                raise
 
         # Call service function
+        print(f"🚀 Calling edit_message_and_regenerate...")
         result = edit_message_and_regenerate(
             user_id=authenticated_user_id,
             msg_id=msg_id,
@@ -105,10 +125,18 @@ def edit_message(authenticated_user_id):
             query_fn=query_fn
         )
 
+        print(f"📤 edit_message_and_regenerate returned: {result}")
+
         if result.get('success'):
+            print(f"✅ Edit successful, returning 200")
             return jsonify(result), 200
         else:
+            print(f"❌ Edit failed: {result.get('error')}")
             return jsonify({"error": result.get('error')}), result.get('status_code', 500)
 
-    except Exception:
-        return jsonify({"error": "Failed to edit message"}), 500
+    except Exception as e:
+        print(f"❌ Exception in edit_message route: {str(e)}")
+        print(f"❌ Exception type: {type(e).__name__}")
+        import traceback
+        print(f"❌ Full traceback:\n{traceback.format_exc()}")
+        return jsonify({"error": f"Failed to edit message: {str(e)}"}), 500

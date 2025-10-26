@@ -501,27 +501,75 @@ export const deleteMessage = async (
 
 /**
  * Edit a specific message in a chat
+ * Supports both message_index (old) and message_timestamp (new table)
  */
 export const editMessage = async (
     sessionId: string,
-    messageIndex: number,
+    messageIndexOrTimestamp: number | string,
     newContent: string
 ): Promise<string> => {
-    const response = await fetchWithAuth(`${API_BASE_URL}/edit_message`, {
-        method: 'POST',
-        body: JSON.stringify({
-            msg_id: sessionId,
-            message_index: messageIndex,
-            new_content: newContent,
-        }),
-    });
+    console.log('📤 editMessage API called:', { sessionId, messageIndexOrTimestamp, newContent: newContent.substring(0, 50) });
 
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(`Edit message failed: ${errorData.error || response.statusText}`);
+    // Build request body - support both timestamp (new table) and index (old table)
+    const body: any = {
+        msg_id: sessionId,
+        new_content: newContent,
+    };
+
+    // If it's a string (ISO timestamp), use message_timestamp
+    // If it's a number, use message_index
+    if (typeof messageIndexOrTimestamp === 'string') {
+        body.message_timestamp = messageIndexOrTimestamp;
+        console.log('   Using message_timestamp:', messageIndexOrTimestamp);
+    } else {
+        body.message_index = messageIndexOrTimestamp;
+        console.log('   Using message_index:', messageIndexOrTimestamp);
     }
 
-    const result = await response.json();
+    console.log('📤 EDIT request body:', body);
+
+    const response = await fetchWithAuth(`${API_BASE_URL}/edit_message`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+
+    console.log('📥 EDIT response status:', response.status);
+
+    if (!response.ok) {
+        let errorData;
+        const responseText = await response.text();
+        console.error('❌ EDIT failed - Response text:', responseText);
+
+        try {
+            errorData = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('❌ Failed to parse error response as JSON:', parseError);
+            errorData = { error: responseText || 'Unknown error' };
+        }
+
+        console.error('❌ EDIT failed - Error data:', errorData);
+        throw new Error(`Edit message failed: ${errorData.error || errorData.detail || response.statusText}`);
+    }
+
+    let result;
+    const responseText = await response.text();
+    console.log('📥 EDIT response text:', responseText);
+
+    try {
+        result = JSON.parse(responseText);
+    } catch (parseError) {
+        console.error('❌ Failed to parse successful response as JSON:', parseError);
+        console.error('❌ Response was:', responseText);
+        throw new Error(`Failed to parse edit response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+    }
+
+    console.log('✅ EDIT result:', result);
+
+    if (!result.new_ai_response) {
+        console.error('❌ No new_ai_response in result:', result);
+        throw new Error('Edit succeeded but no AI response was returned');
+    }
+
     return result.new_ai_response;
 };
 

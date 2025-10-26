@@ -7,6 +7,7 @@ import {
     getChatNames,
     deleteChat as apiDeleteChat,
     deleteMessage as apiDeleteMessage,
+    editMessage as apiEditMessage,
     getCurrentModel,
     getAvailableModels,
     uploadImage,
@@ -43,6 +44,7 @@ interface ChatContextType {
     refreshChatHistory: () => Promise<void>;
     deleteChat: (chatId: string) => Promise<void>;
     deleteMessage: (messageId: number) => Promise<void>;
+    editMessage: (messageId: number, newContent: string) => Promise<void>;
     setCurrentModelName: (modelName: string) => void;
     loadCurrentModel: () => Promise<void>;
 }
@@ -198,6 +200,107 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } catch (error) {
             console.error('Error deleting chat:', error);
             throw error;
+        }
+    };
+
+    // Edit a single message
+    const editMessage = async (messageId: number, newContent: string) => {
+        console.log('✏️ ChatContext.editMessage CALLED with messageId:', messageId, 'newContent:', newContent);
+
+        if (!currentChatId) {
+            console.error('❌ Cannot edit message without a chat ID.');
+            showToast('Cannot edit message: No active chat session', 'error');
+            return;
+        }
+
+        const messageIndex = messages.findIndex(m => m.id === messageId);
+        if (messageIndex === -1) {
+            console.error('❌ Message to edit not found in state.');
+            showToast('Message not found', 'error');
+            return;
+        }
+
+        const messageToEdit = messages[messageIndex];
+
+        // Only allow editing user messages without attachments
+        if (!messageToEdit.isUser) {
+            console.error('❌ Cannot edit bot messages.');
+            showToast('Cannot edit bot messages', 'error');
+            return;
+        }
+
+        if (messageToEdit.images && messageToEdit.images.length > 0) {
+            console.error('❌ Cannot edit messages with images.');
+            showToast('Cannot edit messages with images', 'error');
+            return;
+        }
+
+        if (messageToEdit.files && messageToEdit.files.length > 0) {
+            console.error('❌ Cannot edit messages with files.');
+            showToast('Cannot edit messages with files', 'error');
+            return;
+        }
+
+        console.log('📝 Editing message:', {
+            messageId,
+            messageIndex,
+            totalMessages: messages.length,
+            hasBackendTimestamp: !!messageToEdit.backendTimestamp,
+            backendTimestamp: messageToEdit.backendTimestamp,
+            oldContent: messageToEdit.content.substring(0, 50),
+            newContent: newContent.substring(0, 50),
+        });
+
+        try {
+            // Show loading state while editing
+            setIsLoading(true);
+
+            // CRITICAL: Use backend timestamp if available (for new message table)
+            // Fall back to message index for old table
+            let messageIdentifier: string | number;
+
+            if (messageToEdit.backendTimestamp) {
+                messageIdentifier = messageToEdit.backendTimestamp;
+                console.log('📤 Using message_timestamp for edit:', messageIdentifier);
+            } else {
+                messageIdentifier = messageIndex;
+                console.log('📤 Using message_index for edit:', messageIdentifier);
+            }
+
+            // Call the API to edit the message - this will resend and regenerate the AI response
+            console.log('📤 Sending edit request to backend (will resend and regenerate)...');
+            const newAiResponse = await apiEditMessage(currentChatId, messageIdentifier, newContent);
+            console.log('✅ Server edit successful, received new AI response:', newAiResponse.substring(0, 100));
+
+            // Reload messages from backend to get the updated state with regenerated response
+            const apiMessages = await getChatHistory(currentChatId);
+            const updatedMessages = convertApiMessages(apiMessages);
+            setMessages(updatedMessages);
+            setMessageIdCounter(updatedMessages.length);
+
+            console.log('✅ Message edited and AI response regenerated');
+            showToast('Message edited and response regenerated', 'success');
+
+        } catch (error) {
+            console.error('❌ Error editing message:', error);
+            console.error('❌ Error details:', {
+                errorType: error instanceof Error ? error.constructor.name : typeof error,
+                errorMessage: error instanceof Error ? error.message : String(error),
+                errorStack: error instanceof Error ? error.stack : undefined,
+                messageId,
+                messageIndex,
+                hasTimestamp: !!messageToEdit.backendTimestamp,
+                timestamp: messageToEdit.backendTimestamp,
+                newContentLength: newContent.length,
+            });
+
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            showToast(`Failed to edit message: ${errorMessage}`, 'error');
+
+            // Don't throw - just show the error and exit edit mode
+            // The MessageItem component will handle staying in edit mode if needed
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -487,7 +590,8 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 loadChat,
                 refreshChatHistory,
                 deleteChat,
-                deleteMessage, // Add this
+                deleteMessage,
+                editMessage,
                 setCurrentModelName,
                 loadCurrentModel,
             }}

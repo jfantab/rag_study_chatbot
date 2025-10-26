@@ -8,6 +8,7 @@ import {
     TouchableOpacity,
     Animated,
     Image,
+    TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useClipboard } from '../hooks/useClipboard';
@@ -26,18 +27,22 @@ interface MessageListProps {
     messages: Message[];
     isLoading: boolean;
     onDeleteMessage?: (messageId: number) => Promise<void>;
+    onEditMessage?: (messageId: number, newContent: string) => Promise<void>;
 }
 
 interface MessageItemProps {
     message: Message;
     onCopySuccess: () => void;
     onDelete?: (messageId: number) => Promise<void>;
+    onEdit?: (messageId: number, newContent: string) => Promise<void>;
     onImagePress: (images: string[], index: number) => void;
 }
 
-const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDelete, onImagePress }) => {
+const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDelete, onEdit, onImagePress }) => {
     const { copyToClipboard } = useClipboard();
     const [showMenu, setShowMenu] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedContent, setEditedContent] = useState(message.content);
 
     const handleCopy = async () => {
         const success = await copyToClipboard(message.content, false);
@@ -52,8 +57,31 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
 
     const handleEdit = () => {
         setShowMenu(false);
-        // TODO: Implement edit functionality
-        console.log('Edit message:', message.id);
+        setIsEditing(true);
+        setEditedContent(message.content);
+    };
+
+    const handleCancelEdit = () => {
+        setIsEditing(false);
+        setEditedContent(message.content);
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editedContent.trim()) {
+            setIsEditing(false);
+            return;
+        }
+
+        if (onEdit) {
+            try {
+                // Always resend, even if content hasn't changed (allows regenerating response)
+                await onEdit(message.id, editedContent.trim());
+                setIsEditing(false);
+            } catch (error) {
+                console.error('❌ Edit failed:', error);
+                // Keep editing mode open on error so user can try again
+            }
+        }
     };
 
     const handleDelete = async () => {
@@ -142,13 +170,40 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
                     </View>
                 )}
 
-                {message.content && (
+                {message.content && !isEditing && (
                     <Text style={[
                         styles.messageText,
                         message.isUser ? styles.userMessageText : styles.botMessageText,
                     ]}>
                         {message.content}
                     </Text>
+                )}
+
+                {/* Edit mode text input */}
+                {isEditing && (
+                    <View style={styles.editContainer}>
+                        <TextInput
+                            style={styles.editInput}
+                            value={editedContent}
+                            onChangeText={setEditedContent}
+                            multiline
+                            autoFocus
+                        />
+                        <View style={styles.editButtons}>
+                            <TouchableOpacity
+                                style={[styles.editButton, styles.cancelButton]}
+                                onPress={handleCancelEdit}
+                            >
+                                <Text style={styles.cancelButtonText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.editButton, styles.saveButton]}
+                                onPress={handleSaveEdit}
+                            >
+                                <Text style={styles.saveButtonText}>Save</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 )}
 
                 {/* Action buttons */}
@@ -253,7 +308,7 @@ const EmptyState: React.FC = () => (
     </View>
 );
 
-const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDeleteMessage }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDeleteMessage, onEditMessage }) => {
     const flatListRef = useRef<FlatList>(null);
     const [showCopyToast, setShowCopyToast] = useState(false);
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -306,6 +361,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDelete
             message={item}
             onCopySuccess={handleCopySuccess}
             onDelete={onDeleteMessage}
+            onEdit={onEditMessage}
             onImagePress={handleImagePress}
         />
     );
@@ -596,6 +652,50 @@ const styles = StyleSheet.create({
     },
     botFileSize: {
         color: '#666',
+    },
+    // Edit mode styles
+    editContainer: {
+        marginTop: 4,
+    },
+    editInput: {
+        backgroundColor: 'rgba(0, 0, 0, 0.05)',
+        borderRadius: 8,
+        padding: 10,
+        fontSize: 16,
+        lineHeight: 20,
+        color: 'black',
+        minHeight: 60,
+        maxHeight: 200,
+        textAlignVertical: 'top',
+    },
+    editButtons: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 8,
+        marginTop: 8,
+    },
+    editButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 6,
+        minWidth: 70,
+        alignItems: 'center',
+    },
+    cancelButton: {
+        backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    },
+    saveButton: {
+        backgroundColor: '#007AFF',
+    },
+    cancelButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#333',
+    },
+    saveButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFFFFF',
     },
 });
 

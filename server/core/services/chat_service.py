@@ -674,20 +674,53 @@ def edit_message_and_regenerate(user_id: str, msg_id: str, message_index: int = 
                 return {"success": False, "error": "Can only edit user messages", "status_code": 400}
 
             # Update the user message
+            print(f"✅ Updated message at {message_timestamp}")
             update_single_message(user_id, msg_id, message_timestamp, new_content)
 
             # Generate new AI response
             try:
+                print(f"🤖 Calling query_fn to generate new AI response for: {new_content[:100]}...")
                 answer = query_fn(new_content)
-                new_ai_response = json.loads(answer) if isinstance(answer, str) else answer
-                new_ai_response = new_ai_response["body"]["answer"] if "body" in new_ai_response else answer
+                print(f"📥 Received raw answer from query_fn (type: {type(answer)})")
+                print(f"📥 Raw answer preview: {str(answer)[:200]}")
+
+                # Parse the response
+                if isinstance(answer, str):
+                    print(f"🔍 Answer is string, checking if it's JSON...")
+                    if answer.strip() and (answer.strip().startswith('{') or answer.strip().startswith('[')):
+                        print(f"🔍 Attempting to parse as JSON...")
+                        try:
+                            new_ai_response = json.loads(answer)
+                            print(f"✅ Parsed as JSON successfully")
+                        except json.JSONDecodeError as je:
+                            print(f"❌ JSON parse failed: {str(je)}")
+                            print(f"❌ Answer content: {answer}")
+                            raise
+                    else:
+                        print(f"✅ Answer is plain text, using directly")
+                        new_ai_response = answer
+                else:
+                    print(f"✅ Answer is already parsed (type: {type(answer)})")
+                    new_ai_response = answer
+
+                # Extract the actual response text
+                if isinstance(new_ai_response, dict):
+                    print(f"🔍 Response is dict with keys: {new_ai_response.keys()}")
+                    if "body" in new_ai_response:
+                        print(f"🔍 Extracting from 'body' field")
+                        new_ai_response = new_ai_response["body"]["answer"]
+                    elif "answer" in new_ai_response:
+                        print(f"🔍 Extracting from 'answer' field")
+                        new_ai_response = new_ai_response["answer"]
+
+                print(f"✅ Final AI response (type: {type(new_ai_response)}): {str(new_ai_response)[:200]}")
 
                 # Check if there's an AI response after this message
                 if target_idx + 1 < len(messages) and messages[target_idx + 1].get("type") == "ai":
                     # Update existing AI response
                     ai_timestamp = messages[target_idx + 1].get('timestamp')
                     update_single_message(user_id, msg_id, ai_timestamp, new_ai_response)
-                    print(f"Updated existing AI response at {ai_timestamp}")
+                    print(f"✅ Updated existing AI response at {ai_timestamp}")
                 else:
                     # Add new AI response
                     save_individual_message(
@@ -696,11 +729,15 @@ def edit_message_and_regenerate(user_id: str, msg_id: str, message_index: int = 
                         message_type='ai',
                         content=new_ai_response
                     )
-                    print(f"Added new AI response")
+                    print(f"✅ Added new AI response")
 
             except Exception as e:
-                print(f"Error generating new AI response: {str(e)}")
-                return {"success": False, "error": "Failed to generate new response", "status_code": 500}
+                print(f"❌ Error generating new AI response: {str(e)}")
+                print(f"❌ Exception type: {type(e).__name__}")
+                print(f"❌ Exception args: {e.args}")
+                import traceback
+                print(f"❌ Full traceback:\n{traceback.format_exc()}")
+                return {"success": False, "error": f"Failed to generate new response: {str(e)}", "status_code": 500}
 
             print(f"✅ Edited message and updated AI response (Cost: 2 WCUs)")
             return {
