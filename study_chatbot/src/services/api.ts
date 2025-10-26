@@ -33,6 +33,11 @@ export interface ApiMessage {
     role: 'human' | 'ai';
     msg: string;
     image_urls?: string[];
+    file_attachments?: Array<{
+        name: string;
+        type: string;
+        size: number;
+    }>;
     timestamp?: string; // ISO8601 timestamp from backend (for new message table)
 }
 
@@ -245,6 +250,64 @@ export const uploadImage = async (
         return data.s3_url;
     } catch (error) {
         console.error('❌ Error uploading image:', error);
+        throw error;
+    }
+};
+
+/**
+ * Upload a document to S3
+ * Returns file metadata including S3 key
+ */
+export const uploadDocument = async (
+    fileUri: string,
+    fileName: string,
+    fileType: string,
+    fileSize: number,
+    sessionId: string
+): Promise<{ file_id: string; s3_key: string; filename: string }> => {
+    try {
+        console.log('📄 Uploading document to S3:', fileName);
+
+        // Create form data
+        const formData = new FormData();
+
+        // Create file object for React Native
+        const file: any = {
+            uri: fileUri,
+            type: fileType,
+            name: fileName,
+        };
+
+        formData.append('file', file);
+
+        const authHeaders = await getAuthHeaders();
+
+        const response = await fetchWithTimeout(`${API_BASE_URL}/upload_to_s3`, {
+            method: 'POST',
+            headers: {
+                ...authHeaders,
+                // Don't set Content-Type - let the browser/RN set it with boundary
+            },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+                errorData.error || `Failed to upload document: ${response.status}`
+            );
+        }
+
+        const data = await response.json();
+        console.log('✅ Document uploaded successfully:', data);
+
+        return {
+            file_id: data.file_id,
+            s3_key: data.s3_key,
+            filename: data.filename,
+        };
+    } catch (error) {
+        console.error('❌ Error uploading document:', error);
         throw error;
     }
 };

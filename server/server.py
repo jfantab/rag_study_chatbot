@@ -28,20 +28,9 @@ import re
 load_dotenv()
 
 # Validate encryption key is loaded
-print("=" * 80)
-print("🔐 ENCRYPTION KEY VALIDATION")
-print("=" * 80)
 encryption_key = os.getenv('CHAT_ENCRYPTION_KEY')
-if encryption_key:
-    print(f"✅ CHAT_ENCRYPTION_KEY is set")
-    print(f"   Key length: {len(encryption_key)} characters")
-    print(f"   Key prefix: {encryption_key[:10]}...")
-    print(f"   Environment: {os.getenv('ENVIRONMENT', 'development')}")
-else:
+if not encryption_key:
     print(f"⚠️  WARNING: CHAT_ENCRYPTION_KEY is NOT set!")
-    print(f"   Server will generate a temporary key that changes on restart")
-    print(f"   This will cause decryption failures for existing encrypted data")
-print("=" * 80)
 
 # Initialize Bedrock clients
 bedrock_agent_runtime_client = boto3.client('bedrock-agent-runtime', region_name=AWS_REGION)
@@ -59,14 +48,11 @@ app = Flask(__name__)
 
 # Configure CORS - restrict to specific origins in production
 allowed_origins = os.getenv('ALLOWED_ORIGINS', '*').split(',')
-if allowed_origins == ['*']:
-    print("⚠️  WARNING: CORS is allowing ALL origins. Set ALLOWED_ORIGINS environment variable for production.")
 CORS(app, origins=allowed_origins)
 
 # Configure max file upload size (100MB default, configurable via environment)
 max_upload_mb = int(os.getenv('MAX_UPLOAD_SIZE_MB', '100'))
 app.config['MAX_CONTENT_LENGTH'] = max_upload_mb * 1024 * 1024
-print(f"📁 Max file upload size: {max_upload_mb}MB")
 
 # Use imported models and set current model
 models = MODELS
@@ -113,7 +99,6 @@ def del_chat(authenticated_user_id):
     """Delete a chat session"""
     try:
         data = request.get_json()
-        print(f"Delete chat request: {data}")
 
         if 'msg_id' not in data:
             return jsonify({"error": "msg_id is required"}), 400
@@ -179,8 +164,6 @@ def get_current_model():
 def get_chat_names(authenticated_user_id):
     user_id = authenticated_user_id  # Use authenticated user ID from JWT
 
-    print("user_id: ", user_id)
-
     try:
         client = boto3.client('dynamodb')
         
@@ -216,7 +199,6 @@ def get_chat_names(authenticated_user_id):
                     # Try to decrypt the chat name, fallback to timestamp-based name if decryption fails
                     decrypted_name = encryption.decrypt_chat_name(encrypted_chat_name)
                 except Exception as e:
-                    print(f"⚠️  Warning: Failed to decrypt chat name for {session_id}: {str(e)}")
                     # Use timestamp-based placeholder name instead of encrypted gibberish
                     try:
                         from datetime import datetime
@@ -237,7 +219,6 @@ def get_chat_names(authenticated_user_id):
                 }
                 arr.append(obj)
 
-        print(f"Found {len(arr)} chats for user {user_id}")
         return jsonify({"chats": arr}), 200
         
     except Exception as e:
@@ -263,8 +244,6 @@ def chat_stream(authenticated_user_id):
     image_urls = data.get("image_urls", [])
     files = data.get("files", [])
 
-    print(f"🌊 Starting streaming response for: {question[:100]}...")
-
     # Convert S3 URLs to base64 (same as non-streaming)
     base64_images = None
     if image_urls and len(image_urls) > 0:
@@ -274,8 +253,8 @@ def chat_stream(authenticated_user_id):
                 try:
                     base64_img = download_s3_image_to_base64(img)
                     base64_images.append(base64_img)
-                except Exception as e:
-                    print(f"❌ Failed to download image: {e}")
+                except Exception:
+                    pass  # Skip failed image downloads
 
     def generate():
         """Generator function for SSE streaming"""
@@ -304,7 +283,6 @@ def chat_stream(authenticated_user_id):
             update_chat_history(user_id, msg_id, question, full_response, image_urls, files)
 
         except Exception as e:
-            print(f"❌ Streaming error: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     # Return SSE response
@@ -329,19 +307,13 @@ def retrieve_messages(authenticated_user_id):
     msgs_id = request.args.get('msgId', default = "")
     user_id = authenticated_user_id  # Use authenticated user ID from JWT
 
-    print(f"Requesting messages from {msgs_id} and {user_id}")
-
     # If new message table is enabled, try it first with fallback to old table
     if use_new_message_table():
-        print("🆕 Using new message-based table (one item per message)")
-
         try:
             # Query the new message table
             chat_history = get_messages_for_session(user_id, msgs_id)
 
             if chat_history and len(chat_history) > 0:
-                print(f"✅ Found {len(chat_history)} messages in new table")
-
                 # Convert to expected format for frontend
                 msgs = []
                 s3_client = boto3.client('s3')
@@ -372,31 +344,31 @@ def retrieve_messages(authenticated_user_id):
                                     presigned_urls.append(presigned_url)
                                 else:
                                     presigned_urls.append(s3_url)
-                            except Exception as e:
-                                print(f"❌ Failed to generate presigned URL: {str(e)}")
+                            except Exception:
                                 presigned_urls.append(s3_url)
 
                         formatted_msg["image_urls"] = presigned_urls
+
+                    # Add file attachments if present
+                    if "file_attachments" in msg:
+                        formatted_msg["file_attachments"] = msg["file_attachments"]
 
                     msgs.append(formatted_msg)
 
                 return jsonify({"msgs": msgs}), 200
             else:
-                print(f"⚠️  No messages found in new table, falling back to old table")
+                pass  # Fall back to old table
 
-        except Exception as e:
-            print(f"⚠️  Error reading from new table: {str(e)}, falling back to old table")
+        except Exception:
+            pass  # Fall back to old table
 
     # Fallback to old table (or primary path if USE_NEW_MESSAGE_TABLE=false)
-    print("📦 Using old table (entire history in one item)")
 
     client = boto3.client('dynamodb')
 
     # Try NEW format first: PK=USER#{user_id}, SK=HISTORY#{msg_id}
     pk = generate_user_pk(user_id)
     sk = generate_history_sk(msgs_id)
-
-    print(f"🔍 Trying NEW format: PK={pk}, SK={sk}")
 
     try:
         response = client.get_item(
@@ -409,10 +381,8 @@ def retrieve_messages(authenticated_user_id):
 
         # If not found, try OLD format: PK=CHAT#{msg_id}, SK=HISTORY
         if 'Item' not in response:
-            print(f"⚠️  NEW format not found, trying OLD format...")
             old_pk = f"CHAT#{msgs_id}"
             old_sk = "HISTORY"
-            print(f"🔍 Trying OLD format: PK={old_pk}, SK={old_sk}")
 
             response = client.get_item(
                 TableName="ChatSessions",
@@ -423,28 +393,18 @@ def retrieve_messages(authenticated_user_id):
             )
 
             if 'Item' not in response:
-                print(f"❌ No messages found in either format")
                 return jsonify({"msgs": []}), 200
-
-            print(f"✅ Found messages in OLD format")
-        else:
-            print(f"✅ Found messages in NEW format")
 
         # Handle both ChatHistory (new) and messages (old) field names
         chat_history = None
 
         if 'ChatHistory' in response['Item']:
             # NEW format - ChatHistory field with per-message encryption
-            print(f"📦 Using 'ChatHistory' field (NEW format)")
             try:
                 history_data = response['Item'].get('ChatHistory', {'S': '[]'})['S']
                 encrypted_history = json.loads(history_data)
-                print(f"🔐 Attempting to decrypt {len(encrypted_history)} messages...")
                 chat_history = encryption.decrypt_chat_history(encrypted_history)
-                print(f"✅ Successfully decrypted chat history")
-            except Exception as decrypt_error:
-                print(f"❌ Failed to decrypt ChatHistory field: {str(decrypt_error)}")
-                print(f"⚠️  This likely means CHAT_ENCRYPTION_KEY has changed or is missing")
+            except Exception:
                 # Return empty messages instead of failing completely
                 return jsonify({
                     "msgs": [],
@@ -453,30 +413,22 @@ def retrieve_messages(authenticated_user_id):
                 }), 200
         elif 'messages' in response['Item']:
             # OLD format - entire messages string encrypted
-            print(f"📦 Using 'messages' field (OLD format)")
             messages_str = response['Item']['messages']['S']
             try:
                 # Try to decrypt as text first (old encryption method)
-                print(f"🔐 Attempting to decrypt messages string...")
                 decrypted_messages_str = encryption.decrypt_text(messages_str)
                 chat_history = json.loads(decrypted_messages_str)
-                print(f"✅ Successfully decrypted OLD format messages")
-            except Exception as decrypt_error:
-                print(f"⚠️  Decryption failed, trying plain JSON parse: {str(decrypt_error)}")
+            except Exception:
                 # If decryption fails, try parsing as plain JSON (unencrypted legacy data)
                 try:
                     chat_history = json.loads(messages_str)
-                    print(f"✅ Parsed as plain JSON (unencrypted)")
-                except Exception as json_error:
-                    print(f"❌ Failed to decrypt/parse messages: decrypt={decrypt_error}, json={json_error}")
+                except Exception:
                     return jsonify({
                         "msgs": [],
                         "error": "Failed to decrypt or parse messages",
                         "details": "Data may be corrupted or encrypted with wrong key"
                     }), 200
         else:
-            print(f"❌ No ChatHistory or messages field found")
-            print(f"Available fields: {list(response['Item'].keys())}")
             return jsonify({"msgs": []}), 200
 
         # Convert to expected format and ensure user message comes first in each pair
@@ -508,12 +460,10 @@ def retrieve_messages(authenticated_user_id):
                                 ExpiresIn=3600  # 1 hour
                             )
                             presigned_urls.append(presigned_url)
-                            print(f"✅ Generated presigned URL for: {file_key}")
                         else:
                             # Invalid format, use original URL
                             presigned_urls.append(s3_url)
-                    except Exception as e:
-                        print(f"❌ Failed to generate presigned URL: {str(e)}")
+                    except Exception:
                         # Fallback to original URL
                         presigned_urls.append(s3_url)
 
@@ -535,13 +485,10 @@ def ensure_chat_sessions_table_exists():
         # Check if table exists
         try:
             client.describe_table(TableName='ChatSessions')
-            print("ChatSessions table already exists")
             return True
         except ClientError as e:
             if e.response['Error']['Code'] != 'ResourceNotFoundException':
                 raise e
-
-        print("Creating ChatSessions table...")
 
         # Create the table
         client.create_table(
@@ -561,40 +508,19 @@ def ensure_chat_sessions_table_exists():
         waiter = client.get_waiter('table_exists')
         waiter.wait(TableName='ChatSessions')
 
-        print("ChatSessions table created successfully")
         return True
 
     except Exception as e:
         print(f"Error ensuring ChatSessions table exists: {str(e)}")
         return False
 
-""" Main """
-def main():
-    """ Server sanity check """
-    print('Server is working')
-    print(f'Current model is {current_model_id}')
-
 if __name__ == "__main__":
     from core.aws.dynamodb_service import ensure_all_tables_exist
 
     # Ensure DynamoDB tables exist before starting server
-    if not ensure_all_tables_exist():
-        print("⚠️  Warning: Failed to ensure all DynamoDB tables exist. Server may not work properly.")
-
-    # Check if new message table should be used
-    from core.aws.dynamodb_service import use_new_message_table
-    if use_new_message_table():
-        print("🆕 Server configured to use NEW message-based table (one item per message)")
-        print("   Set USE_NEW_MESSAGE_TABLE=false to revert to old approach")
-    else:
-        print("📦 Server configured to use OLD approach (entire history in one item)")
-        print("   Set USE_NEW_MESSAGE_TABLE=true to enable new message-based table")
-
-    # Run server sanity check before starting
-    main()
+    ensure_all_tables_exist()
 
     # Get debug mode from environment (default False for production safety)
     debug_mode = os.getenv('DEBUG', 'False').lower() == 'true'
 
-    print(f"🚀 Starting server on port {PORT} (debug={'ON' if debug_mode else 'OFF'})")
     app.run(host="0.0.0.0", port=PORT, debug=debug_mode)

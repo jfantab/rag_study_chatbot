@@ -6,6 +6,8 @@ export interface FileAttachment {
   name: string;
   size: number;
   type: string;
+  s3_key?: string; // S3 key after upload
+  file_id?: string; // File ID from backend
 }
 
 export class DocumentPickerService {

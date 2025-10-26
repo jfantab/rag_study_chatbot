@@ -57,8 +57,7 @@ def new_chat(authenticated_user_id):
         else:
             return jsonify({"error": "Failed to create new chat"}), 500
 
-    except Exception as e:
-        print(f"Error in new_chat endpoint: {str(e)}")
+    except Exception:
         return jsonify({"error": "Failed to create new chat"}), 500
 
 
@@ -81,8 +80,6 @@ def chat_with_retrieval(authenticated_user_id):
         files = validated_data['files']
         user_id = authenticated_user_id
 
-        print(msg_id, user_id)
-
         # Get current model ID
         current_model = get_current_model_info()
         current_model_id = current_model.get('current_model_id', DEFAULT_MODEL_ID)
@@ -97,8 +94,7 @@ def chat_with_retrieval(authenticated_user_id):
         if pdf_files:
             try:
                 answer = process_pdf_with_hybrid(question, pdf_files, msg_id, user_id)
-            except Exception as pdf_error:
-                print(f"PDF hybrid processing failed: {str(pdf_error)}")
+            except Exception:
                 # Fallback to regular processing
                 answer = query_bedrock(question, msg_id, user_id, image_urls if image_urls else None, files if files else None, current_model_id, BEDROCK_API_URL)
                 answer = json.loads(answer)
@@ -106,7 +102,6 @@ def chat_with_retrieval(authenticated_user_id):
         else:
             # No PDF attached to this message.
             # Check for session context or perform a generic query.
-            print("No PDF in request, checking for session context...")
             answer = query_with_session_context(
                 question, msg_id, user_id, image_urls, other_files,
                 query_bedrock_fn=lambda q, m, u, i, f: query_bedrock(q, m, u, i, f, current_model_id, BEDROCK_API_URL)
@@ -131,5 +126,4 @@ def chat_with_retrieval(authenticated_user_id):
         else:
             return jsonify({"error": f"Database error: {e.response['Error']['Message']}"}), 500
     except Exception as e:
-        print(f"Error in chat endpoint: {str(e)}")
         return jsonify({"error": f"Unexpected error: {str(e)}"}), 500

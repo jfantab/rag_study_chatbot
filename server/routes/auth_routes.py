@@ -21,8 +21,7 @@ def signup():
             return jsonify(result), 200
         else:
             return jsonify(result), result.get('status_code', 400)
-    except Exception as e:
-        print(f"Error in signup endpoint: {str(e)}")
+    except Exception:
         return jsonify({"error": "Internal server error"}), 500
 
 
@@ -40,6 +39,5 @@ def delete_account():
             return jsonify(result), 200
         else:
             return jsonify(result), result.get('status_code', 400)
-    except Exception as e:
-        print(f"Error in delete_account endpoint: {str(e)}")
+    except Exception:
         return jsonify({"error": "Internal server error"}), 500

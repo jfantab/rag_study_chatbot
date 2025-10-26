@@ -59,7 +59,6 @@ def upload_image_endpoint(authenticated_user_id):
         content_type = file.content_type or 'image/jpeg'
 
         # Upload directly to S3 from file stream (no ACL parameter)
-        print(f"📤 Uploading image to S3: {file_key}")
         s3_client.upload_fileobj(
             file.stream,
             bucket_name,
@@ -73,15 +72,12 @@ def upload_image_endpoint(authenticated_user_id):
         # Generate S3 URL
         s3_url = f"https://{bucket_name}.{S3_BASE_URL}/{file_key}"
 
-        print(f"✅ Successfully uploaded image: {s3_url}")
-
         return jsonify({
             "s3_url": s3_url,
             "s3_key": file_key
         }), 200
 
     except Exception as e:
-        print(f"❌ Error in upload-image endpoint: {str(e)}")
         return jsonify({"error": f"Failed to upload image: {str(e)}"}), 500
 
 
@@ -92,6 +88,5 @@ def cleanup_user_images_route(authenticated_user_id):
     try:
         result = cleanup_user_images(authenticated_user_id)
         return jsonify(result), 200
-    except Exception as e:
-        print(f"Error in cleanup_user_images route: {str(e)}")
+    except Exception:
         return jsonify({"error": "Internal server error"}), 500

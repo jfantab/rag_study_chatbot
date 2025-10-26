@@ -44,8 +44,7 @@ def list_s3_files_enhanced(authenticated_user_id):
             "include_metadata": include_metadata
         }), 200
 
-    except Exception as e:
-        print(f"Error listing encrypted S3 files: {str(e)}")
+    except Exception:
         return jsonify({"error": "Failed to list files"}), 500
 
 
@@ -58,11 +57,9 @@ def list_s3_files_with_server_decryption(authenticated_user_id):
 
     try:
         import boto3
-        print(f"Starting file listing for user: {authenticated_user_id}")
 
         # Import encryption services
         from core.services.file_encryption import FileEncryptionService
-        print("FileEncryptionService imported successfully")
 
         # Create S3 client directly to get raw metadata
         from constants import S3_DOCUMENT_BUCKET
@@ -70,27 +67,15 @@ def list_s3_files_with_server_decryption(authenticated_user_id):
         bucket_name = S3_DOCUMENT_BUCKET
         user_prefix = f"users/{authenticated_user_id}/"
 
-        print(f"Listing S3 objects with prefix: {user_prefix}")
-
         # List objects for user
         response = s3_client.list_objects_v2(
             Bucket=bucket_name,
             Prefix=user_prefix
         )
 
-        print(f"S3 ListObjects response: {response.get('KeyCount', 0)} objects found")
-        if response.get('Contents'):
-            print(f"Raw S3 object keys: {[obj['Key'] for obj in response['Contents']]}")
-        else:
-            print("No objects found in S3")
-
         # Initialize encryption service for this user
-        print(f"Initializing encryption service for user: {authenticated_user_id}")
         encryption_service = FileEncryptionService(user_id=authenticated_user_id)
-        print("FileEncryptionService created")
-
         metadata_encryption = encryption_service.metadata_encryption
-        print(f"Metadata encryption retrieved: {metadata_encryption is not None}")
 
         files = []
         for obj in response.get('Contents', []):
@@ -123,13 +108,10 @@ def list_s3_files_with_server_decryption(authenticated_user_id):
                 # Decrypt filename on server side
                 if 'encrypted-filename' in s3_metadata:
                     try:
-                        print(f"Decrypting filename for: {s3_key}")
                         decrypted_filename = metadata_encryption.decrypt_metadata_field(s3_metadata['encrypted-filename'])
-                        print(f"Successfully decrypted filename: {decrypted_filename}")
                         file_info['filename'] = decrypted_filename
                         file_info['filename_encrypted'] = False
-                    except Exception as decrypt_error:
-                        print(f"Failed to decrypt filename for {s3_key}: {decrypt_error}")
+                    except Exception:
                         file_info['filename'] = f"[Encrypted File] {s3_key.split('/')[-1]}"
                         file_info['filename_encrypted'] = False
                 elif 'original-filename' in s3_metadata:
@@ -147,15 +129,13 @@ def list_s3_files_with_server_decryption(authenticated_user_id):
                             decrypted_value = metadata_encryption.decrypt_metadata_field(value)
                             clean_key = key.replace('encrypted-', '')
                             decrypted_metadata[clean_key] = decrypted_value
-                        except Exception as decrypt_error:
-                            print(f"Failed to decrypt metadata field {key}: {decrypt_error}")
+                        except Exception:
                             decrypted_metadata[key] = f"[Decrypt Error] {value[:20]}..."
 
                 file_info['metadata'] = decrypted_metadata
                 files.append(file_info)
 
             except Exception as e:
-                print(f"Error processing file {s3_key}: {str(e)}")
                 files.append({
                     's3_key': s3_key,
                     'filename': s3_key.split('/')[-1],
@@ -171,12 +151,9 @@ def list_s3_files_with_server_decryption(authenticated_user_id):
         # Also check for JSON format encrypted files
         json_files = []
         try:
-            print("Importing JsonFileEncryptionService")
             from core.services.json_file_encryption import JsonFileEncryptionService
-            print("JsonFileEncryptionService imported")
 
             json_encryption_service = JsonFileEncryptionService(user_id=authenticated_user_id)
-            print("JsonFileEncryptionService created")
 
             # List JSON files
             json_response = s3_client.list_objects_v2(
@@ -212,11 +189,11 @@ def list_s3_files_with_server_decryption(authenticated_user_id):
 
                             json_files.append(json_file_info)
 
-                    except Exception as json_error:
-                        print(f"Error processing JSON file {obj['Key']}: {json_error}")
+                    except Exception:
+                        pass  # Skip files that can't be processed
 
-        except Exception as json_service_error:
-            print(f"JSON encryption service not available: {json_service_error}")
+        except Exception:
+            pass  # JSON encryption service not available
 
         # Combine both file types
         all_files = files + json_files
@@ -230,8 +207,7 @@ def list_s3_files_with_server_decryption(authenticated_user_id):
             "server_decryption": True
         }), 200
 
-    except Exception as e:
-        print(f"Error listing files with server decryption: {str(e)}")
+    except Exception:
         return jsonify({"error": "Failed to list files"}), 500
 
 
@@ -266,7 +242,7 @@ def upload_to_s3(authenticated_user_id):
                 try:
                     custom_fields = json.loads(request.form.get('custom_fields'))
                 except json.JSONDecodeError:
-                    print(f"Invalid custom_fields JSON, ignoring")
+                    pass  # Ignore invalid JSON
 
             try:
                 # Create encrypted S3 service
@@ -311,12 +287,10 @@ def upload_to_s3(authenticated_user_id):
                 else:
                     return jsonify({"error": f"Failed to upload encrypted file: {result['error']}"}), 500
 
-            except Exception as e:
-                print(f"Error uploading encrypted file to S3: {str(e)}")
+            except Exception:
                 return jsonify({"error": "Failed to upload encrypted file to S3"}), 500
 
-    except Exception as e:
-        print(f"Error uploading file: {str(e)}")
+    except Exception:
         return jsonify({"error": "Failed to upload file"}), 500
 
 
@@ -341,8 +315,7 @@ def get_pdf_processing_status(authenticated_user_id):
             "file_metadata": status_info.get('file_metadata', {})
         }), 200
 
-    except Exception as e:
-        print(f"Error getting PDF processing status: {str(e)}")
+    except Exception:
         return jsonify({"error": "Failed to get processing status"}), 500
 
 
@@ -352,25 +325,18 @@ def download_from_s3(authenticated_user_id):
     """Download and decrypt a file from S3 with enhanced debugging"""
     import boto3
     from flask import Response
-    import traceback
-
-    print(f"Download request from user: {authenticated_user_id}")
 
     if not validate_user_access(authenticated_user_id):
-        print(f"User {authenticated_user_id} validation failed")
         return jsonify({"error": f"User {authenticated_user_id} is not authorized to download files"}), 403
 
     try:
         s3_key = request.args.get('s3_key')
-        print(f"Requested S3 key: {s3_key}")
 
         if not s3_key:
-            print("Missing s3_key parameter")
             return jsonify({"error": "s3_key parameter is required"}), 400
 
         # Validate that the file belongs to the user
         if not s3_key.startswith(f"users/{authenticated_user_id}/"):
-            print(f"Access denied - key doesn't belong to user: {s3_key}")
             return jsonify({"error": "Access denied to this file"}), 403
 
         # Import encryption services
@@ -382,27 +348,18 @@ def download_from_s3(authenticated_user_id):
         s3_client = boto3.client('s3')
         bucket_name = S3_DOCUMENT_BUCKET
 
-        print(f"Downloading file from S3: {s3_key}")
-
         try:
             # Check if this is a JSON format file or binary format
             if s3_key.endswith('.json'):
-                print("Processing as JSON format encrypted file")
-
                 # Download JSON file
                 response = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
                 json_content = json.loads(response['Body'].read().decode('utf-8'))
-
-                print(f"JSON file downloaded, size: {response['ContentLength']} bytes")
 
                 # Initialize JSON encryption service
                 json_service = JsonFileEncryptionService(user_id=authenticated_user_id)
 
                 # Parse and decrypt JSON file
                 file_data, file_metadata = json_service.parse_encrypted_json_file(json_content)
-
-                print(f"JSON file decrypted successfully")
-                print(f"File metadata: {file_metadata}")
 
                 # Return decrypted file
                 response = Response(
@@ -417,34 +374,22 @@ def download_from_s3(authenticated_user_id):
                         'X-Storage-Format': 'json'
                     }
                 )
-                print(f"Returning decrypted file, size: {len(file_data)} bytes")
                 return response
 
             else:
-                print("Processing as binary format encrypted file")
-
                 # Get object and its metadata
                 response = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
                 file_data = response['Body'].read()
                 s3_metadata = response.get('Metadata', {})
 
-                print(f"Binary file downloaded, size: {len(file_data)} bytes")
-                print(f"S3 metadata: {s3_metadata}")
-
                 # Check if file is encrypted
                 if s3_metadata.get('content-encrypted') == 'true':
-                    print("File is encrypted, decrypting...")
-
                     # Initialize encryption service
                     encryption_service = FileEncryptionService(user_id=authenticated_user_id)
 
                     # Decrypt file data
                     decrypted_data = encryption_service.base_encryption.decrypt_file_data(file_data)
                     file_data = decrypted_data
-
-                    print(f"File decrypted successfully, size: {len(file_data)} bytes")
-                else:
-                    print("File is not encrypted, returning as-is")
 
                 # Determine filename
                 filename = s3_metadata.get('original-filename', s3_key.split('/')[-1])
@@ -455,9 +400,8 @@ def download_from_s3(authenticated_user_id):
                         metadata_encryption = encryption_service.metadata_encryption
                         if metadata_encryption:
                             filename = metadata_encryption.decrypt_metadata_field(s3_metadata['encrypted-filename'])
-                            print(f"Filename decrypted: {filename}")
-                    except Exception as fn_error:
-                        print(f"Failed to decrypt filename: {fn_error}")
+                    except Exception:
+                        pass  # Use original filename if decryption fails
 
                 # Return decrypted file
                 response = Response(
@@ -472,15 +416,10 @@ def download_from_s3(authenticated_user_id):
                         'X-Storage-Format': 'binary'
                     }
                 )
-                print(f"Returning decrypted file, size: {len(file_data)} bytes")
                 return response
 
         except Exception as e:
-            print(f"Error processing file {s3_key}: {str(e)}")
-            traceback.print_exc()
             return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
 
-    except Exception as e:
-        print(f"Error downloading file: {str(e)}")
-        traceback.print_exc()
+    except Exception:
         return jsonify({"error": "Failed to download file"}), 500

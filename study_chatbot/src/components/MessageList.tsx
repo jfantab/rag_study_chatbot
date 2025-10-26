@@ -108,6 +108,40 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
                     </TouchableOpacity>
                 )}
 
+                {/* File attachments */}
+                {message.files && message.files.length > 0 && (
+                    <View style={styles.fileAttachmentsContainer}>
+                        {message.files.map((file, index) => (
+                            <View key={index} style={styles.fileAttachment}>
+                                <Ionicons
+                                    name="document-text"
+                                    size={18}
+                                    color={message.isUser ? '#FFFFFF' : '#007AFF'}
+                                />
+                                <View style={styles.fileInfo}>
+                                    <Text
+                                        style={[
+                                            styles.fileName,
+                                            message.isUser ? styles.userFileName : styles.botFileName,
+                                        ]}
+                                        numberOfLines={1}
+                                    >
+                                        {file.name}
+                                    </Text>
+                                    <Text
+                                        style={[
+                                            styles.fileSize,
+                                            message.isUser ? styles.userFileSize : styles.botFileSize,
+                                        ]}
+                                    >
+                                        {formatFileSize(file.size)}
+                                    </Text>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                )}
+
                 {message.content && (
                     <Text style={[
                         styles.messageText,
@@ -159,8 +193,8 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
                         onPress={() => setShowMenu(false)}
                     />
                     <View style={styles.dropdownMenu}>
-                        {/* Only show Edit if message has no image attachments */}
-                        {(!message.images || message.images.length === 0) && (
+                        {/* Only show Edit if message has no image or file attachments */}
+                        {(!message.images || message.images.length === 0) && (!message.files || message.files.length === 0) && (
                             <TouchableOpacity
                                 style={styles.menuItem}
                                 onPress={handleEdit}
@@ -192,6 +226,15 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
             )}
         </View>
     );
+};
+
+// Helper function to format file size
+const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 };
 
 const LoadingIndicator: React.FC = () => (
@@ -516,6 +559,43 @@ const styles = StyleSheet.create({
         height: 120,
         borderRadius: 8,
         backgroundColor: '#F0F0F0',
+    },
+    // File attachment styles
+    fileAttachmentsContainer: {
+        marginVertical: 6,
+        gap: 6,
+    },
+    fileAttachment: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 6,
+        backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    },
+    fileInfo: {
+        flex: 1,
+    },
+    fileName: {
+        fontSize: 13,
+        fontWeight: '500',
+        marginBottom: 2,
+    },
+    userFileName: {
+        color: '#FFFFFF',
+    },
+    botFileName: {
+        color: '#333',
+    },
+    fileSize: {
+        fontSize: 11,
+    },
+    userFileSize: {
+        color: 'rgba(255, 255, 255, 0.8)',
+    },
+    botFileSize: {
+        color: '#666',
     },
 });
 

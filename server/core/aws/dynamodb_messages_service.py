@@ -117,9 +117,9 @@ def save_individual_message(
         if 'image_urls' in encrypted_message and encrypted_message['image_urls']:
             item['image_urls'] = {'L': [{'S': url} for url in encrypted_message['image_urls']]}
 
-        # Add file attachments if present (metadata only, not encrypted)
-        if file_attachments:
-            item['file_attachments'] = {'S': json.dumps(file_attachments)}
+        # Add encrypted file attachments if present
+        if 'file_attachments' in encrypted_message and encrypted_message['file_attachments']:
+            item['file_attachments'] = {'S': json.dumps(encrypted_message['file_attachments'])}
 
         # Add encrypted flag
         if encrypted_message.get('encrypted', False):

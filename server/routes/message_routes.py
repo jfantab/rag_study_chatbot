@@ -30,17 +30,12 @@ def delete_message(authenticated_user_id):
     """
     try:
         data = request.get_json()
-        print(f"🔴 DELETE MESSAGE REQUEST RECEIVED:")
-        print(f"   Raw data: {data}")
-        print(f"   User ID: {authenticated_user_id}")
 
         if 'msg_id' not in data:
-            print(f"❌ ERROR: msg_id missing from request")
             return jsonify({"error": "msg_id is required"}), 400
 
         # Support both message_index (old) and message_timestamp (new)
         if 'message_index' not in data and 'message_timestamp' not in data:
-            print(f"❌ ERROR: Neither message_index nor message_timestamp provided")
             return jsonify({"error": "Either message_index or message_timestamp is required"}), 400
 
         msg_id = data["msg_id"]
@@ -48,12 +43,6 @@ def delete_message(authenticated_user_id):
         message_timestamp = data.get("message_timestamp")
         # delete_next is now auto-determined by message type if not explicitly provided
         delete_next = data.get("delete_next", None)
-
-        print(f"📋 DELETE PARAMS:")
-        print(f"   msg_id: {msg_id}")
-        print(f"   message_index: {message_index} (type: {type(message_index)})")
-        print(f"   message_timestamp: {message_timestamp} (type: {type(message_timestamp)})")
-        print(f"   delete_next: {delete_next}")
 
         # Call service function
         result = delete_message_from_history(
@@ -64,18 +53,12 @@ def delete_message(authenticated_user_id):
             delete_next=delete_next
         )
 
-        print(f"✅ DELETE RESULT: {result}")
-
         if result.get('success'):
             return jsonify(result), 200
         else:
-            print(f"❌ DELETE FAILED: {result.get('error')}")
             return jsonify({"error": result.get('error')}), result.get('status_code', 500)
 
     except Exception as e:
-        print(f"❌ EXCEPTION in delete_message endpoint: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({"error": f"Failed to delete message: {str(e)}"}), 500
 
 
@@ -104,12 +87,6 @@ def edit_message(authenticated_user_id):
         message_timestamp = data.get("message_timestamp")
         new_content = data["new_content"]
 
-        print(f"Editing message from {msg_id} for user {authenticated_user_id}")
-        if message_timestamp:
-            print(f"  Using timestamp: {message_timestamp}")
-        elif message_index is not None:
-            print(f"  Using index: {message_index}")
-
         # Get current model ID
         current_model = get_current_model_info()
         current_model_id = current_model.get('model_id', 'anthropic.claude-3-5-sonnet-20240620-v1:0')
@@ -133,6 +110,5 @@ def edit_message(authenticated_user_id):
         else:
             return jsonify({"error": result.get('error')}), result.get('status_code', 500)
 
-    except Exception as e:
-        print(f"Error in edit_message endpoint: {str(e)}")
+    except Exception:
         return jsonify({"error": "Failed to edit message"}), 500

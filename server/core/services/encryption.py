@@ -94,6 +94,18 @@ class AESMessageEncryption:
                     encrypted_urls.append(self.encrypt_text(url))
                 encrypted_message['image_urls'] = encrypted_urls
 
+            # Encrypt file attachments metadata if present
+            if 'file_attachments' in encrypted_message and encrypted_message['file_attachments']:
+                encrypted_attachments = []
+                for attachment in encrypted_message['file_attachments']:
+                    encrypted_attachment = {
+                        'name': self.encrypt_text(attachment['name']) if attachment.get('name') else '',
+                        'type': self.encrypt_text(attachment['type']) if attachment.get('type') else '',
+                        'size': attachment['size']  # Size is a number, keep as-is
+                    }
+                    encrypted_attachments.append(encrypted_attachment)
+                encrypted_message['file_attachments'] = encrypted_attachments
+
             # Encrypt any file paths or file content
             if 'file_path' in encrypted_message and encrypted_message['file_path']:
                 encrypted_message['file_path'] = self.encrypt_text(encrypted_message['file_path'])
@@ -125,6 +137,18 @@ class AESMessageEncryption:
                     for url in decrypted_message['image_urls']:
                         decrypted_urls.append(self.decrypt_text(url))
                     decrypted_message['image_urls'] = decrypted_urls
+
+                # Decrypt file attachments metadata if present
+                if 'file_attachments' in decrypted_message and decrypted_message['file_attachments']:
+                    decrypted_attachments = []
+                    for attachment in decrypted_message['file_attachments']:
+                        decrypted_attachment = {
+                            'name': self.decrypt_text(attachment['name']) if attachment.get('name') else '',
+                            'type': self.decrypt_text(attachment['type']) if attachment.get('type') else '',
+                            'size': attachment['size']  # Size is a number, keep as-is
+                        }
+                        decrypted_attachments.append(decrypted_attachment)
+                    decrypted_message['file_attachments'] = decrypted_attachments
 
                 # Decrypt any file paths or file content
                 if 'file_path' in decrypted_message and decrypted_message['file_path']:

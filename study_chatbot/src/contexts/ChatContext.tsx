@@ -10,6 +10,7 @@ import {
     getCurrentModel,
     getAvailableModels,
     uploadImage,
+    uploadDocument,
     ApiMessage,
     Model,
 } from '../services/api';
@@ -123,6 +124,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 timestamp: new Date(msg.timestamp || Date.now()),
                 backendTimestamp: msg.timestamp, // Keep original timestamp for API calls
                 images: msg.image_urls, // Include image URLs from backend
+                files: msg.file_attachments, // Include file attachments from backend
             });
         });
         return messages;
@@ -364,8 +366,67 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
             }
 
-            // Call the real API with uploaded image URLs
-            const response = await sendChatMessage(message.trim(), sessionId, imageUrls, files);
+            // Upload documents to S3 and prepare for backend processing
+            let filesForBackend: any[] | undefined = undefined;
+            if (files && files.length > 0) {
+                console.log(`📄 Processing ${files.length} documents...`);
+                try {
+                    // Step 1: Upload to S3 for persistence (in background)
+                    const uploadPromises = files.map(file =>
+                        uploadDocument(file.uri, file.name, file.type, file.size, sessionId)
+                            .catch(err => {
+                                console.warn('⚠️ S3 upload failed (non-critical):', err);
+                                return null; // Continue even if S3 upload fails
+                            })
+                    );
+
+                    // Step 2: Read file content as base64 for immediate processing
+                    const contentPromises = files.map(async (file) => {
+                        const fileBase64 = await fetch(file.uri)
+                            .then(res => res.blob())
+                            .then(blob => new Promise<string>((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                    const base64String = (reader.result as string).split(',')[1];
+                                    resolve(base64String);
+                                };
+                                reader.onerror = reject;
+                                reader.readAsDataURL(blob);
+                            }));
+
+                        return {
+                            name: file.name,
+                            type: file.type,
+                            size: file.size,
+                            content: fileBase64, // Base64 encoded content for backend processing
+                        };
+                    });
+
+                    // Wait for both S3 uploads and content reading
+                    const [uploadResults, filesWithContent] = await Promise.all([
+                        Promise.all(uploadPromises),
+                        Promise.all(contentPromises)
+                    ]);
+
+                    filesForBackend = filesWithContent;
+                    console.log('✅ Documents uploaded to S3 and prepared for processing');
+
+                    // Update the user message to show files in UI
+                    setMessages(prev =>
+                        prev.map(msg =>
+                            msg.id === newMessageId
+                                ? { ...msg, files: files }
+                                : msg
+                        )
+                    );
+                } catch (uploadError) {
+                    console.error('❌ Error processing documents:', uploadError);
+                    throw new Error('Failed to process documents. Please try again.');
+                }
+            }
+
+            // Call the real API with uploaded image URLs and file content
+            const response = await sendChatMessage(message.trim(), sessionId, imageUrls, filesForBackend);
 
             const botMessage: Message = {
                 id: newMessageId + 1,

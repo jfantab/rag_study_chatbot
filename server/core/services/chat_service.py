@@ -246,9 +246,31 @@ def query_with_session_context(question: str, msg_id: str, user_id: str, images=
                         answer = json.loads(answer) if isinstance(answer, str) else answer
                         return answer["body"]["answer"]
             else:
-                # If not indexed, inform the user.
+                # If not indexed yet, try to answer with general LLM knowledge
                 print(f"PDF is not yet indexed (status: {kb_status.get('status')}).")
-                return "Your document is still being processed and is not yet available in the knowledge base. Please try your query again in a few moments."
+                print("Falling back to general Bedrock query without KB context")
+
+                try:
+                    # Attempt to answer with general knowledge
+                    answer = query_bedrock_fn(question, msg_id, user_id, images, other_files)
+
+                    # Handle both direct Bedrock (string) and Lambda (JSON) responses
+                    if isinstance(answer, str) and not answer.startswith('{'):
+                        bedrock_answer = answer
+                    else:
+                        answer = json.loads(answer) if isinstance(answer, str) else answer
+                        bedrock_answer = answer["body"]["answer"]
+
+                    # Add a note about the document still processing
+                    enhanced_answer = f"""{bedrock_answer}
+
+📋 *Note: Your document is still being indexed in the background. Once indexing completes, I'll be able to provide more detailed answers based on your specific document content.*"""
+
+                    return enhanced_answer
+
+                except Exception as bedrock_error:
+                    print(f"⚠️ General Bedrock query also failed: {str(bedrock_error)}")
+                    return "Your document is still being processed and is not yet available in the knowledge base. Please try your query again in a few moments."
         else:
             # No PDF associated, so just do a generic bedrock query.
             print("No associated PDF. Performing generic query.")
