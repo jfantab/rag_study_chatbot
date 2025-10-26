@@ -1,22 +1,191 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     ScrollView,
     TouchableOpacity,
+    ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '../contexts/AuthContext';
+import * as DocumentPicker from 'expo-document-picker';
+
+interface FileInfo {
+    s3_key: string;
+    filename: string;
+    file_size: number;
+    size_on_s3: number;
+    mime_type: string;
+    last_modified: string;
+    upload_date?: string;
+    is_encrypted: boolean;
+    storage_format: string;
+}
 
 const FileUploadScreen: React.FC = () => {
     const navigation = useNavigation();
+    const { idToken } = useAuth();
     const [uploadedFiles] = useState<any[]>([]);
+    const [storageFiles, setStorageFiles] = useState<FileInfo[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState<string>('');
 
-    const handleFileSelect = () => {
-        // UI only - no functionality yet
-        console.log('File select tapped');
+    // Fetch files from S3 on component mount
+    useEffect(() => {
+        fetchStorageFiles();
+    }, []);
+
+    const fetchStorageFiles = async () => {
+        if (!idToken) {
+            console.log('No auth token available');
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            // Import API_BASE_URL from environment or use default
+            let baseUrl = 'http://192.168.1.105:8000';
+            try {
+                const env = await import('@env');
+                baseUrl = env.API_BASE_URL || baseUrl;
+            } catch (envError) {
+                console.log('Using default API_BASE_URL');
+            }
+
+            const response = await fetch(`${baseUrl}/list_s3_files_encrypted`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${idToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch files: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Fetched files:', data);
+            setStorageFiles(data.files || []);
+        } catch (error) {
+            console.error('Error fetching storage files:', error);
+            Alert.alert('Error', 'Failed to load files from storage');
+        } finally {
+            setIsLoading(false);
+            setIsRefreshing(false);
+        }
+    };
+
+    const handleRefresh = () => {
+        setIsRefreshing(true);
+        fetchStorageFiles();
+    };
+
+    const handleFileSelect = async () => {
+        try {
+            // Open document picker
+            const result = await DocumentPicker.getDocumentAsync({
+                type: [
+                    'application/pdf',
+                    'text/plain',
+                    'application/msword',
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                ],
+                copyToCacheDirectory: true,
+            });
+
+            if (result.canceled) {
+                console.log('File selection cancelled');
+                return;
+            }
+
+            const file = result.assets[0];
+            console.log('Selected file:', file);
+
+            // Upload the file
+            await uploadFile(file);
+        } catch (error) {
+            console.error('Error selecting file:', error);
+            Alert.alert('Error', 'Failed to select file');
+        }
+    };
+
+    const uploadFile = async (file: any) => {
+        if (!idToken) {
+            Alert.alert('Error', 'You must be signed in to upload files');
+            return;
+        }
+
+        setIsUploading(true);
+        setUploadProgress(`Uploading ${file.name}...`);
+
+        try {
+            // Import API_BASE_URL from environment or use default
+            let baseUrl = 'http://192.168.1.105:8000';
+            try {
+                const env = await import('@env');
+                baseUrl = env.API_BASE_URL || baseUrl;
+            } catch (envError) {
+                console.log('Using default API_BASE_URL');
+            }
+
+            // Create form data
+            const formData = new FormData();
+
+            // Create file object for upload
+            const fileToUpload: any = {
+                uri: file.uri,
+                type: file.mimeType || 'application/octet-stream',
+                name: file.name,
+            };
+
+            formData.append('file', fileToUpload);
+
+            console.log('Uploading to:', `${baseUrl}/upload_to_s3`);
+
+            const response = await fetch(`${baseUrl}/upload_to_s3`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${idToken}`,
+                    // Don't set Content-Type - let fetch set it with boundary
+                },
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(
+                    errorData.error || `Upload failed: ${response.status}`
+                );
+            }
+
+            const data = await response.json();
+            console.log('Upload successful:', data);
+
+            Alert.alert(
+                'Success',
+                `File "${file.name}" uploaded successfully!`,
+                [{ text: 'OK' }]
+            );
+
+            // Refresh the file list
+            await fetchStorageFiles();
+        } catch (error: any) {
+            console.error('Upload error:', error);
+            Alert.alert(
+                'Upload Failed',
+                error.message || 'Failed to upload file'
+            );
+        } finally {
+            setIsUploading(false);
+            setUploadProgress('');
+        }
     };
 
     const formatFileSize = (bytes: number): string => {
@@ -25,6 +194,36 @@ const FileUploadScreen: React.FC = () => {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    const formatDate = (dateString: string): string => {
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+            });
+        } catch {
+            return 'Unknown date';
+        }
+    };
+
+    const getFileIcon = (mimeType: string): any => {
+        if (mimeType?.includes('pdf')) {
+            return 'document-text';
+        } else if (
+            mimeType?.includes('word') ||
+            mimeType?.includes('document')
+        ) {
+            return 'document';
+        } else if (mimeType?.includes('text')) {
+            return 'document-outline';
+        } else if (mimeType?.includes('image')) {
+            return 'image';
+        } else {
+            return 'document-attach';
+        }
     };
 
     return (
@@ -45,52 +244,162 @@ const FileUploadScreen: React.FC = () => {
                 <View style={styles.uploadContainer}>
                     <Text style={styles.sectionTitle}>Upload Documents</Text>
                     <Text style={styles.description}>
-                        Upload documents to enhance your chatbot's knowledge base
+                        Upload documents to enhance your chatbot's knowledge
+                        base
                     </Text>
 
                     <TouchableOpacity
-                        style={styles.uploadArea}
+                        style={[
+                            styles.uploadArea,
+                            isUploading && styles.uploadAreaDisabled,
+                        ]}
                         onPress={handleFileSelect}
                         activeOpacity={0.7}
+                        disabled={isUploading}
                     >
-                        <Ionicons name="cloud-upload" size={48} color="#007AFF" />
-                        <Text style={styles.uploadTitle}>Tap to select files</Text>
-                        <Text style={styles.uploadSubtitle}>
-                            Supports PDF, TXT, DOC, DOCX files
-                        </Text>
+                        {isUploading ? (
+                            <>
+                                <ActivityIndicator
+                                    size="large"
+                                    color="#007AFF"
+                                />
+                                <Text style={styles.uploadTitle}>
+                                    {uploadProgress}
+                                </Text>
+                                <Text style={styles.uploadSubtitle}>
+                                    Please wait...
+                                </Text>
+                            </>
+                        ) : (
+                            <>
+                                <Ionicons
+                                    name="cloud-upload"
+                                    size={48}
+                                    color="#007AFF"
+                                />
+                                <Text style={styles.uploadTitle}>
+                                    Tap to select files
+                                </Text>
+                                <Text style={styles.uploadSubtitle}>
+                                    Supports PDF, TXT, DOC, DOCX files
+                                </Text>
+                            </>
+                        )}
                     </TouchableOpacity>
-
-                    {/* Selected Files (Empty State) */}
-                    {uploadedFiles.length === 0 && (
-                        <View style={styles.emptyState}>
-                            <Ionicons name="document-outline" size={64} color="#E5E7EB" />
-                            <Text style={styles.emptyStateTitle}>No files selected</Text>
-                            <Text style={styles.emptyStateSubtitle}>
-                                Select files to upload to your knowledge base
-                            </Text>
-                        </View>
-                    )}
 
                     {/* Storage Files Section */}
                     <View style={styles.storageSection}>
                         <View style={styles.storageSectionHeader}>
                             <View>
-                                <Text style={styles.storageTitle}>Files in Storage</Text>
-                                <Text style={styles.fileCount}>0 files available</Text>
+                                <Text style={styles.storageTitle}>
+                                    Files in Storage
+                                </Text>
+                                <Text style={styles.fileCount}>
+                                    {storageFiles.length} file
+                                    {storageFiles.length !== 1 ? 's' : ''}{' '}
+                                    available
+                                </Text>
                             </View>
-                            <TouchableOpacity style={styles.refreshButton}>
-                                <Ionicons name="refresh" size={20} color="#007AFF" />
+                            <TouchableOpacity
+                                style={styles.refreshButton}
+                                onPress={handleRefresh}
+                                disabled={isRefreshing}
+                            >
+                                <Ionicons
+                                    name="refresh"
+                                    size={20}
+                                    color={isRefreshing ? '#9CA3AF' : '#007AFF'}
+                                />
                             </TouchableOpacity>
                         </View>
 
                         <View style={styles.storageFilesList}>
-                            <View style={styles.noFilesContainer}>
-                                <Ionicons name="folder-open-outline" size={48} color="#E5E7EB" />
-                                <Text style={styles.noFilesText}>No files in storage</Text>
-                                <Text style={styles.noFilesSubtext}>
-                                    Upload files to get started
-                                </Text>
-                            </View>
+                            {isLoading ? (
+                                <View style={styles.loadingContainer}>
+                                    <ActivityIndicator
+                                        size="large"
+                                        color="#007AFF"
+                                    />
+                                    <Text style={styles.loadingText}>
+                                        Loading files...
+                                    </Text>
+                                </View>
+                            ) : storageFiles.length === 0 ? (
+                                <View style={styles.noFilesContainer}>
+                                    <Ionicons
+                                        name="folder-open-outline"
+                                        size={48}
+                                        color="#E5E7EB"
+                                    />
+                                    <Text style={styles.noFilesText}>
+                                        No files in storage
+                                    </Text>
+                                    <Text style={styles.noFilesSubtext}>
+                                        Upload files to get started
+                                    </Text>
+                                </View>
+                            ) : (
+                                storageFiles.map((file, index) => (
+                                    <View
+                                        key={file.s3_key}
+                                        style={[
+                                            styles.fileItem,
+                                            index !== storageFiles.length - 1 &&
+                                                styles.fileItemBorder,
+                                        ]}
+                                    >
+                                        <View style={styles.fileIconContainer}>
+                                            <Ionicons
+                                                name={getFileIcon(
+                                                    file.mime_type
+                                                )}
+                                                size={32}
+                                                color="#007AFF"
+                                            />
+                                        </View>
+                                        <View style={styles.fileInfo}>
+                                            <Text
+                                                style={styles.fileName}
+                                                numberOfLines={1}
+                                            >
+                                                {file.filename}
+                                            </Text>
+                                            <View style={styles.fileMetaRow}>
+                                                <Text style={styles.fileSize}>
+                                                    {formatFileSize(
+                                                        file.file_size
+                                                    )}
+                                                </Text>
+                                                <Text style={styles.fileDot}>
+                                                    •
+                                                </Text>
+                                                <Text style={styles.fileDate}>
+                                                    {formatDate(
+                                                        file.upload_date ||
+                                                            file.last_modified
+                                                    )}
+                                                </Text>
+                                                {file.is_encrypted && (
+                                                    <>
+                                                        <Text
+                                                            style={
+                                                                styles.fileDot
+                                                            }
+                                                        >
+                                                            •
+                                                        </Text>
+                                                        <Ionicons
+                                                            name="lock-closed"
+                                                            size={12}
+                                                            color="#10B981"
+                                                        />
+                                                    </>
+                                                )}
+                                            </View>
+                                        </View>
+                                    </View>
+                                ))
+                            )}
                         </View>
                     </View>
                 </View>
@@ -142,6 +451,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: 'white',
         marginBottom: 32,
+    },
+    uploadAreaDisabled: {
+        opacity: 0.6,
+        backgroundColor: '#F9FAFB',
     },
     uploadTitle: {
         fontSize: 18,
@@ -220,6 +533,59 @@ const styles = StyleSheet.create({
     noFilesSubtext: {
         fontSize: 14,
         color: '#9CA3AF',
+    },
+    loadingContainer: {
+        padding: 40,
+        alignItems: 'center',
+    },
+    loadingText: {
+        fontSize: 14,
+        color: '#6B7280',
+        marginTop: 12,
+    },
+    fileItem: {
+        flexDirection: 'row',
+        padding: 16,
+        alignItems: 'center',
+    },
+    fileItemBorder: {
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6',
+    },
+    fileIconContainer: {
+        width: 48,
+        height: 48,
+        borderRadius: 8,
+        backgroundColor: '#EFF6FF',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    fileInfo: {
+        flex: 1,
+    },
+    fileName: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#1D1D1F',
+        marginBottom: 4,
+    },
+    fileMetaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    fileSize: {
+        fontSize: 14,
+        color: '#6B7280',
+    },
+    fileDate: {
+        fontSize: 14,
+        color: '#6B7280',
+    },
+    fileDot: {
+        fontSize: 14,
+        color: '#9CA3AF',
+        marginHorizontal: 6,
     },
 });
 

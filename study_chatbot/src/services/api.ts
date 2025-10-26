@@ -12,7 +12,7 @@ import { getIdToken } from './cognitoService';
 // For iOS simulator: use http://localhost:8000
 // For Android emulator: use http://10.0.2.2:8000
 // For physical device: use your computer's IP address
-const API_BASE_URL = ENV_API_BASE_URL || 'http://192.168.1.99:8000';
+const API_BASE_URL = ENV_API_BASE_URL || 'http://192.168.1.105:8000';
 
 // Request timeout configuration
 const REQUEST_TIMEOUT = 120000; // 120 seconds
