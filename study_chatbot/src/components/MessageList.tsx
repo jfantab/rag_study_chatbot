@@ -8,10 +8,10 @@ import {
     TouchableOpacity,
     Animated,
     Image,
-    ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useClipboard } from '../hooks/useClipboard';
+import ImagePreviewModal from './ImagePreviewModal';
 
 interface Message {
     id: number;
@@ -32,9 +32,10 @@ interface MessageItemProps {
     message: Message;
     onCopySuccess: () => void;
     onDelete?: (messageId: number) => Promise<void>;
+    onImagePress: (images: string[], index: number) => void;
 }
 
-const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDelete }) => {
+const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDelete, onImagePress }) => {
     const { copyToClipboard } = useClipboard();
     const [showMenu, setShowMenu] = useState(false);
 
@@ -92,23 +93,19 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
                     </Text>
                 </View>
 
-                {/* Image attachments */}
+                {/* Image attachment */}
                 {message.images && message.images.length > 0 && (
-                    <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
+                    <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => onImagePress(message.images!, 0)}
                         style={styles.imageContainer}
-                        contentContainerStyle={styles.imageContent}
                     >
-                        {message.images.map((imageUri, index) => (
-                            <Image
-                                key={index}
-                                source={{ uri: imageUri }}
-                                style={styles.messageImage}
-                                resizeMode="cover"
-                            />
-                        ))}
-                    </ScrollView>
+                        <Image
+                            source={{ uri: message.images[0] }}
+                            style={styles.messageImage}
+                            resizeMode="cover"
+                        />
+                    </TouchableOpacity>
                 )}
 
                 {message.content && (
@@ -162,17 +159,20 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
                         onPress={() => setShowMenu(false)}
                     />
                     <View style={styles.dropdownMenu}>
-                        <TouchableOpacity
-                            style={styles.menuItem}
-                            onPress={handleEdit}
-                        >
-                            <Ionicons
-                                name="create-outline"
-                                size={16}
-                                color="#333"
-                            />
-                            <Text style={styles.menuItemText}>Edit</Text>
-                        </TouchableOpacity>
+                        {/* Only show Edit if message has no image attachments */}
+                        {(!message.images || message.images.length === 0) && (
+                            <TouchableOpacity
+                                style={styles.menuItem}
+                                onPress={handleEdit}
+                            >
+                                <Ionicons
+                                    name="create-outline"
+                                    size={16}
+                                    color="#333"
+                                />
+                                <Text style={styles.menuItemText}>Edit</Text>
+                            </TouchableOpacity>
+                        )}
 
                         <TouchableOpacity
                             style={[styles.menuItem, styles.menuItemDestructive]}
@@ -214,6 +214,9 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDelete
     const flatListRef = useRef<FlatList>(null);
     const [showCopyToast, setShowCopyToast] = useState(false);
     const fadeAnim = useRef(new Animated.Value(0)).current;
+    const [previewImages, setPreviewImages] = useState<string[]>([]);
+    const [previewIndex, setPreviewIndex] = useState(0);
+    const [showImagePreview, setShowImagePreview] = useState(false);
 
     useEffect(() => {
         if (messages.length > 0 || isLoading) {
@@ -245,11 +248,22 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDelete
         });
     };
 
+    const handleImagePress = (images: string[], index: number) => {
+        setPreviewImages(images);
+        setPreviewIndex(index);
+        setShowImagePreview(true);
+    };
+
+    const handleCloseImagePreview = () => {
+        setShowImagePreview(false);
+    };
+
     const renderMessage = ({ item }: { item: Message }) => (
         <MessageItem
             message={item}
             onCopySuccess={handleCopySuccess}
             onDelete={onDeleteMessage}
+            onImagePress={handleImagePress}
         />
     );
 
@@ -272,6 +286,8 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDelete
                     style={styles.messagesList}
                     contentContainerStyle={styles.messagesContent}
                     showsVerticalScrollIndicator={true}
+                    scrollEventThrottle={16}
+                    removeClippedSubviews={false}
                 />
             )}
 
@@ -297,6 +313,14 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDelete
                     <Text style={styles.copyToastText}>Copied to clipboard!</Text>
                 </Animated.View>
             )}
+
+            {/* Image Preview Modal */}
+            <ImagePreviewModal
+                visible={showImagePreview}
+                images={previewImages}
+                initialIndex={previewIndex}
+                onClose={handleCloseImagePreview}
+            />
         </View>
     );
 };
@@ -315,13 +339,12 @@ const styles = StyleSheet.create({
     },
     messageWrapper: {
         position: 'relative',
-        marginBottom: 16,
+        marginBottom: 8,
     },
     messageContainer: {
         padding: 12,
         borderRadius: 12,
-        maxWidth: '85%',
-        minWidth: 200,
+        maxWidth: '70%',
     },
     userMessage: {
         backgroundColor: '#e6e7e9ff',
@@ -337,7 +360,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 4,
+        marginBottom: 6,
         gap: 12,
     },
     messageSender: {
@@ -482,14 +505,15 @@ const styles = StyleSheet.create({
     },
     // Image styles
     imageContainer: {
-        marginBottom: 8,
+        marginVertical: 8,
+        marginBottom: 4,
     },
     imageContent: {
         gap: 8,
     },
     messageImage: {
-        width: 150,
-        height: 150,
+        width: 120,
+        height: 120,
         borderRadius: 8,
         backgroundColor: '#F0F0F0',
     },

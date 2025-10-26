@@ -13,11 +13,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import DocumentPickerService, { FileAttachment } from '../services/DocumentPickerService';
 
 interface ChatInputProps {
     value: string;
     onChangeText: (text: string) => void;
-    onSend: (message: string, images?: string[]) => void;
+    onSend: (message: string, images?: string[], files?: FileAttachment[]) => void;
     isLoading: boolean;
 }
 
@@ -30,11 +31,18 @@ const ChatInput: React.FC<ChatInputProps> = ({
     const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
     const [inputHeight, setInputHeight] = useState(48);
     const [selectedImages, setSelectedImages] = useState<string[]>([]);
+    const [selectedFiles, setSelectedFiles] = useState<FileAttachment[]>([]);
+    const [isPickingFile, setIsPickingFile] = useState(false);
 
     const handleSend = () => {
-        if ((value.trim() || selectedImages.length > 0) && !isLoading) {
-            onSend(value.trim(), selectedImages.length > 0 ? selectedImages : undefined);
+        if ((value.trim() || selectedImages.length > 0 || selectedFiles.length > 0) && !isLoading) {
+            onSend(
+                value.trim(),
+                selectedImages.length > 0 ? selectedImages : undefined,
+                selectedFiles.length > 0 ? selectedFiles : undefined
+            );
             setSelectedImages([]);
+            setSelectedFiles([]);
         }
     };
 
@@ -111,37 +119,148 @@ const ChatInput: React.FC<ChatInputProps> = ({
         }
     };
 
-    const handleDocumentPicker = () => {
+    const handleDocumentPicker = async () => {
+        if (isPickingFile) {
+            console.log('⚠️ File picker already in progress, ignoring tap');
+            return;
+        }
+
         setShowAttachmentMenu(false);
-        console.log('Document picker selected');
+        setIsPickingFile(true);
+
+        try {
+            console.log('📁 Opening document picker...');
+
+            const documentPickerService = DocumentPickerService.getInstance();
+
+            // Test functionality first
+            const testResult = await documentPickerService.testDocumentPicker();
+            if (!testResult) {
+                Alert.alert(
+                    'Document Picker Unavailable',
+                    'Document picker is not available on this device.',
+                    [{ text: 'OK' }]
+                );
+                return;
+            }
+
+            const file = await documentPickerService.pickDocument();
+
+            if (file) {
+                console.log('✅ File selected:', file);
+                setSelectedFiles(prev => [...prev, file]);
+            } else {
+                console.log('📝 File selection canceled or picker busy');
+            }
+        } catch (error: any) {
+            console.error('❌ Document picker error:', error);
+
+            // Handle specific concurrent picker error
+            if (error.message && error.message.includes('Different document picking in progress')) {
+                Alert.alert(
+                    'File Picker Busy',
+                    'File picker is currently in use. Please wait a moment and try again.',
+                    [
+                        { text: 'OK' },
+                        {
+                            text: 'Retry',
+                            onPress: () => {
+                                setTimeout(() => {
+                                    DocumentPickerService.getInstance().forceReset();
+                                    handleDocumentPicker();
+                                }, 1000);
+                            }
+                        }
+                    ]
+                );
+                return;
+            }
+
+            Alert.alert(
+                'File Selection Error',
+                `Failed to select file: ${error.message || 'Unknown error'}`,
+                [{ text: 'OK' }]
+            );
+        } finally {
+            setIsPickingFile(false);
+        }
     };
 
     const removeImage = (index: number) => {
         setSelectedImages(prev => prev.filter((_, i) => i !== index));
     };
 
+    const removeFile = (index: number) => {
+        setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const formatFileSize = (bytes: number): string => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    };
+
     return (
         <View style={styles.container}>
-            {/* Image Preview */}
-            {selectedImages.length > 0 && (
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.imagePreviewContainer}
-                    contentContainerStyle={styles.imagePreviewContent}
-                >
-                    {selectedImages.map((imageUri, index) => (
-                        <View key={index} style={styles.imagePreviewWrapper}>
-                            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
-                            <TouchableOpacity
-                                style={styles.removeImageButton}
-                                onPress={() => removeImage(index)}
-                            >
-                                <Ionicons name="close-circle" size={20} color="#FF3B30" />
-                            </TouchableOpacity>
-                        </View>
-                    ))}
-                </ScrollView>
+            {/* Attachments Preview */}
+            {(selectedImages.length > 0 || selectedFiles.length > 0) && (
+                <View style={styles.attachmentsWrapper}>
+                    {/* Image Preview */}
+                    {selectedImages.length > 0 && (
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={styles.imagePreviewContainer}
+                            contentContainerStyle={styles.imagePreviewContent}
+                        >
+                            {selectedImages.map((imageUri, index) => (
+                                <View key={index} style={styles.imagePreviewWrapper}>
+                                    <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+                                    <TouchableOpacity
+                                        style={styles.removeImageButton}
+                                        onPress={() => removeImage(index)}
+                                    >
+                                        <Ionicons name="close-circle" size={20} color="#FF3B30" />
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </ScrollView>
+                    )}
+
+                    {/* File Preview */}
+                    {selectedFiles.length > 0 && (
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={styles.filePreviewContainer}
+                            contentContainerStyle={styles.filePreviewContent}
+                        >
+                            {selectedFiles.map((file, index) => (
+                                <View key={index} style={styles.filePreviewWrapper}>
+                                    <View style={styles.filePreview}>
+                                        <Ionicons name="document-text" size={20} color="#007AFF" />
+                                        <View style={styles.fileInfo}>
+                                            <Text style={styles.fileName} numberOfLines={1}>
+                                                {file.name}
+                                            </Text>
+                                            <Text style={styles.fileSize}>
+                                                {formatFileSize(file.size)}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <TouchableOpacity
+                                        style={styles.removeFileButton}
+                                        onPress={() => removeFile(index)}
+                                    >
+                                        <Ionicons name="close-circle" size={20} color="#FF3B30" />
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </ScrollView>
+                    )}
+                </View>
             )}
 
             <View style={styles.inputContainer}>
@@ -176,11 +295,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 <TouchableOpacity
                     style={[
                         styles.sendButton,
-                        ((!value.trim() && selectedImages.length === 0) || isLoading) &&
+                        ((!value.trim() && selectedImages.length === 0 && selectedFiles.length === 0) || isLoading) &&
                             styles.sendButtonDisabled,
                     ]}
                     onPress={handleSend}
-                    disabled={(!value.trim() && selectedImages.length === 0) || isLoading}
+                    disabled={(!value.trim() && selectedImages.length === 0 && selectedFiles.length === 0) || isLoading}
                 >
                     <Text style={styles.sendButtonText}>→</Text>
                 </TouchableOpacity>
@@ -421,6 +540,10 @@ const styles = StyleSheet.create({
     cancelText: {
         color: '#FF3B30',
     },
+    // Attachments wrapper
+    attachmentsWrapper: {
+        marginBottom: 12,
+    },
     // Image preview styles
     imagePreviewContainer: {
         maxHeight: 80,
@@ -441,6 +564,54 @@ const styles = StyleSheet.create({
         backgroundColor: '#F0F0F0',
     },
     removeImageButton: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    // File preview styles
+    filePreviewContainer: {
+        maxHeight: 80,
+        paddingVertical: 4,
+    },
+    filePreviewContent: {
+        paddingHorizontal: 8,
+    },
+    filePreviewWrapper: {
+        position: 'relative',
+        marginRight: 12,
+    },
+    filePreview: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FA',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        minWidth: 140,
+        maxWidth: 200,
+    },
+    fileInfo: {
+        marginLeft: 8,
+        flex: 1,
+    },
+    fileName: {
+        fontSize: 12,
+        fontWeight: '500',
+        color: '#333',
+        marginBottom: 2,
+    },
+    fileSize: {
+        fontSize: 10,
+        color: '#666',
+    },
+    removeFileButton: {
         position: 'absolute',
         top: -6,
         right: -6,

@@ -18,7 +18,9 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "This app needs access to your photos to let you select and share images.",
-        "NSCameraUsageDescription": "This app needs access to your camera to let you take and share photos."
+        "NSCameraUsageDescription": "This app needs access to your camera to let you take and share photos.",
+        "NSDocumentsFolderUsageDescription": "This app needs access to documents to let you select and share files.",
+        "NSDownloadsFolderUsageDescription": "This app needs access to downloads to let you select and share files."
       }
     },
     "android": {
@@ -48,6 +50,12 @@
         {
           "photosPermission": "This app needs access to your photos to let you select and share images.",
           "cameraPermission": "This app needs access to your camera to let you take and share photos."
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
         }
       ]
     ],

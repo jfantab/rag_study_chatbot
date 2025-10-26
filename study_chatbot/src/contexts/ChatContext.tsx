@@ -9,10 +9,13 @@ import {
     deleteMessage as apiDeleteMessage,
     getCurrentModel,
     getAvailableModels,
+    uploadImage,
     ApiMessage,
     Model,
 } from '../services/api';
 import { ChatHistory } from '../components/Sidebar';
+import { FileAttachment } from '../services/DocumentPickerService';
+import { useToast } from './ToastContext';
 
 interface Message {
     id: number;
@@ -21,6 +24,7 @@ interface Message {
     timestamp: Date;
     backendTimestamp?: string; // ISO timestamp from backend
     images?: string[]; // Image URIs
+    files?: FileAttachment[]; // File attachments
 }
 
 interface ChatContextType {
@@ -32,7 +36,7 @@ interface ChatContextType {
     currentModelName: string;
     availableModels: Model[];
     setInputValue: (value: string) => void;
-    sendMessage: (message: string, images?: string[]) => void;
+    sendMessage: (message: string, images?: string[], files?: FileAttachment[]) => void;
     startNewChat: () => void;
     loadChat: (chatId: string) => Promise<void>;
     refreshChatHistory: () => Promise<void>;
@@ -45,6 +49,7 @@ interface ChatContextType {
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const { showToast } = useToast();
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -117,6 +122,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 isUser: msg.role === 'human',
                 timestamp: new Date(msg.timestamp || Date.now()),
                 backendTimestamp: msg.timestamp, // Keep original timestamp for API calls
+                images: msg.image_urls, // Include image URLs from backend
             });
         });
         return messages;
@@ -289,19 +295,19 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 console.log('⚠️  No messages remaining, chat will be cleaned up');
                 await refreshChatHistory();
                 await startNewChat();
-                alert('All messages deleted. Starting a new chat.');
+                showToast('All messages deleted. Starting a new chat.', 'info');
             }
 
         } catch (error) {
             console.error('❌ Error deleting message:', error);
-            alert(`Failed to delete message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            showToast(`Failed to delete message: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
             throw error;
         }
     };
 
 
-    const sendMessage = async (message: string, images?: string[]) => {
-        if (!message.trim() && (!images || images.length === 0)) return;
+    const sendMessage = async (message: string, images?: string[], files?: FileAttachment[]) => {
+        if (!message.trim() && (!images || images.length === 0) && (!files || files.length === 0)) return;
 
         const newMessageId = messageIdCounter;
         setMessageIdCounter(messageIdCounter + 1);
@@ -313,6 +319,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             isUser: true,
             timestamp: new Date(),
             images: images,
+            files: files,
         };
 
         setMessages(prev => [...prev, userMessage]);
@@ -333,8 +340,32 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 console.log('✅ Chat created:', sessionId, chatName);
             }
 
-            // Call the real API
-            const response = await sendChatMessage(message.trim(), sessionId);
+            // Upload images to S3 if any
+            let imageUrls: string[] | undefined = undefined;
+            if (images && images.length > 0) {
+                console.log(`📤 Uploading ${images.length} images to S3...`);
+                try {
+                    imageUrls = await Promise.all(
+                        images.map(imageUri => uploadImage(imageUri, sessionId))
+                    );
+                    console.log('✅ All images uploaded successfully:', imageUrls);
+
+                    // Update the user message with S3 URLs so images display correctly
+                    setMessages(prev =>
+                        prev.map(msg =>
+                            msg.id === newMessageId
+                                ? { ...msg, images: imageUrls }
+                                : msg
+                        )
+                    );
+                } catch (uploadError) {
+                    console.error('❌ Error uploading images:', uploadError);
+                    throw new Error('Failed to upload images. Please try again.');
+                }
+            }
+
+            // Call the real API with uploaded image URLs
+            const response = await sendChatMessage(message.trim(), sessionId, imageUrls, files);
 
             const botMessage: Message = {
                 id: newMessageId + 1,

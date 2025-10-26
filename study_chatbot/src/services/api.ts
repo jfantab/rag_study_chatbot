@@ -21,6 +21,8 @@ const REQUEST_TIMEOUT = 120000; // 120 seconds
 interface ChatRequest {
     msg: string;
     msg_id: string;
+    image_urls?: string[];
+    files?: any[];
 }
 
 interface ChatResponse {
@@ -193,17 +195,76 @@ const fetchWithAuth = async (
 };
 
 /**
+ * Upload an image to S3
+ * Returns the S3 URL of the uploaded image
+ */
+export const uploadImage = async (
+    imageUri: string,
+    sessionId: string
+): Promise<string> => {
+    try {
+        console.log('📤 Uploading image to S3:', imageUri);
+
+        // Create form data
+        const formData = new FormData();
+
+        // Extract filename from URI or use a default
+        const filename = imageUri.split('/').pop() || 'image.jpg';
+
+        // Create file object for React Native
+        const file: any = {
+            uri: imageUri,
+            type: 'image/jpeg', // Default to JPEG, can be made dynamic
+            name: filename,
+        };
+
+        formData.append('file', file);
+        formData.append('chatId', sessionId);
+
+        const authHeaders = await getAuthHeaders();
+
+        const response = await fetchWithTimeout(`${API_BASE_URL}/upload-image`, {
+            method: 'POST',
+            headers: {
+                ...authHeaders,
+                // Don't set Content-Type - let the browser/RN set it with boundary
+            },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+                errorData.error || `Failed to upload image: ${response.status}`
+            );
+        }
+
+        const data = await response.json();
+        console.log('✅ Image uploaded successfully:', data.s3_url);
+
+        return data.s3_url;
+    } catch (error) {
+        console.error('❌ Error uploading image:', error);
+        throw error;
+    }
+};
+
+/**
  * Send a chat message to the server (Bedrock invoke)
  * Includes authentication token in headers with automatic retry on token expiration
  */
 export const sendChatMessage = async (
     message: string,
-    sessionId: string
+    sessionId: string,
+    imageUrls?: string[],
+    files?: any[]
 ): Promise<string> => {
     try {
         const requestBody: ChatRequest = {
             msg: message,
             msg_id: sessionId,
+            image_urls: imageUrls,
+            files: files,
         };
 
         console.log('📤 Sending chat request to Bedrock:', requestBody);

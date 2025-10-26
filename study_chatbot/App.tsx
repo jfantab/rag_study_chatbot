@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { ChatProvider } from './src/contexts/ChatContext';
 import { AuthProvider } from './src/contexts/AuthContext';
+import { ToastProvider } from './src/contexts/ToastContext';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 
@@ -10,11 +11,13 @@ export default function App() {
         <SafeAreaProvider>
             <SafeAreaView style={styles.container}>
                 <AuthProvider>
-                    <ChatProvider>
-                        <View style={styles.container}>
-                            <AppNavigator />
-                        </View>
-                    </ChatProvider>
+                    <ToastProvider>
+                        <ChatProvider>
+                            <View style={styles.container}>
+                                <AppNavigator />
+                            </View>
+                        </ChatProvider>
+                    </ToastProvider>
                 </AuthProvider>
             </SafeAreaView>
         </SafeAreaProvider>
