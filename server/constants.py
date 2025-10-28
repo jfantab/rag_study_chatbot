@@ -35,25 +35,31 @@ INTENT_CLASSIFIER_MODEL = "anthropic.claude-3-haiku-20240307-v1:0"
 # JWT Authentication Configuration
 KEYS_CACHE_DURATION = 3600  # 1 hour
 
-# Available AI models
+# Available AI models (ON-DEMAND THROUGHPUT ONLY)
+# Note: Models requiring Provisioned Throughput have been excluded
 MODELS = {
-    # Text & Vision Models
-    "Claude Sonnet 4": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-    "Claude 3 Sonnet": "anthropic.claude-3-sonnet-20240229-v1:0",
-    "Claude Opus 4": "anthropic.claude-opus-4-20250514-v1:0",
-    "Llama 3 70B Instruct": "meta.llama3-70b-instruct-v1:0",
-    "Llama 3.2 90B Vision Instruct": "meta.llama3-2-90b-instruct-v1:0",
-    "Llama 4 Maverick 17B Instruct": "meta.llama3-1-405b-instruct-v1:0",
-    "Pegasus 1.2": "twelvelabs.pegasus-1-2-v1:0",
-    "Claude Opus 4.1": "anthropic.claude-opus-4-1-20250805-v1:0",
+    # === ANTHROPIC CLAUDE MODELS ===
+    # Claude 3.5 Family
+    "Claude 3.5 Sonnet": "anthropic.claude-3-5-sonnet-20240620-v1:0",
 
-    # Text Only Models
-    "Mistral 7B Instruct": "mistral.mistral-7b-instruct-v0:2",
-    "DeepSeek-R1": "deepseek.r1-v1:0",
+    # Claude 3 Family
+    "Claude 3 Sonnet": "anthropic.claude-3-sonnet-20240229-v1:0",
+    "Claude 3 Haiku": "anthropic.claude-3-haiku-20240307-v1:0",
+
+    # === META LLAMA MODELS ===
+    # Llama 3 Family (Base models with on-demand support)
+    "Llama 3 70B": "meta.llama3-70b-instruct-v1:0",
+    "Llama 3 8B": "meta.llama3-8b-instruct-v1:0",
+
+    # === MISTRAL AI MODELS ===
+    "Mistral Large (24.02)": "mistral.mistral-large-2402-v1:0",
+    "Mistral Small (24.02)": "mistral.mistral-small-2402-v1:0",
+    "Mixtral 8x7B": "mistral.mixtral-8x7b-instruct-v0:1",
+    "Mistral 7B": "mistral.mistral-7b-instruct-v0:2",
 }
 
 # Default model
-DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+DEFAULT_MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
 # Validate required environment variables
 def validate_environment():

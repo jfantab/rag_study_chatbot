@@ -67,7 +67,14 @@ def get_models_list() -> dict:
 
     for model_name, model_id in models.items():
         # Determine model category based on model capabilities
-        if any(keyword in model_name.lower() for keyword in ['claude', 'llama 3.2', 'llama 4', 'pegasus', 'opus']):
+        # Vision-capable models (available on-demand):
+        # - Claude 3.5 and 3.x models (have vision)
+        # Note: Only including models with on-demand throughput support
+        model_name_lower = model_name.lower()
+
+        if any(keyword in model_name_lower for keyword in [
+            'claude',  # All Claude models have vision
+        ]):
             category = "Text & Vision"
         else:
             category = "Text Only"

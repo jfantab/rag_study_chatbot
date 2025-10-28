@@ -8,6 +8,7 @@ import boto3
 from botocore.client import Config
 from constants import AWS_REGION
 from .document_processing import extract_text_from_document
+from .s3_utils import download_s3_image_to_base64
 
 # Configure retry strategy
 retry_config = Config(
@@ -24,6 +25,62 @@ bedrock_runtime_client = boto3.client('bedrock-runtime', region_name=AWS_REGION,
 
 # Knowledge Base configuration
 KNOWLEDGE_BASE_ID = os.getenv("KNOWLEDGE_BASE_ID", "ADEGC5Q4KM")
+
+
+def build_content_blocks(text: str, image_urls: list = None, image_captions: list = None):
+    """
+    Build structured content blocks for Bedrock API messages
+
+    Args:
+        text: Text content for the message
+        image_urls: Optional list of S3 image URLs to download and include
+        image_captions: Optional list of captions to add context to the text
+
+    Returns:
+        List of content blocks or plain string if no images
+    """
+    # If no images, return plain string (for AI responses)
+    if not image_urls or len(image_urls) == 0:
+        return text
+
+    # Build structured content blocks
+    content_blocks = []
+
+    # Add text block with captions if present
+    text_content = text
+    if image_captions and len(image_captions) > 0:
+        captions_text = "\n[Image context: " + "; ".join(image_captions) + "]"
+        text_content = text + captions_text
+
+    content_blocks.append({
+        "type": "text",
+        "text": text_content
+    })
+
+    # Download and add image blocks
+    for i, img_url in enumerate(image_urls):
+        try:
+            print(f"🔄 Downloading historical image from S3: {img_url}")
+            base64_img, media_type = download_s3_image_to_base64(img_url)
+
+            # Remove data URI prefix if present
+            if base64_img.startswith('data:image'):
+                base64_img = base64_img.split(',', 1)[1]
+
+            content_blocks.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": base64_img
+                }
+            })
+            print(f"✅ Added historical image {i+1}/{len(image_urls)} to content blocks")
+        except Exception as e:
+            print(f"⚠️ Failed to download historical image {i+1}: {str(e)}")
+            # Continue without this image
+
+    return content_blocks
 
 
 def should_fallback_to_llm(kb_response: dict, user_input: str) -> bool:
@@ -148,25 +205,36 @@ Please analyze the content from the attached files and provide insights based on
 
                 if role in ['user', 'assistant'] and content:
                     # Check for attachment context (captions/summaries)
+                    image_urls_hist = msg.get('image_urls', [])
                     image_captions = msg.get('image_captions', [])
                     file_summaries = msg.get('file_summaries', [])
 
-                    # Build enhanced content with attachment context
-                    enhanced_content = content
+                    # Build content (structured blocks for user messages with images, string for others)
+                    message_content = content
 
-                    if image_captions:
+                    if role == 'user' and image_urls_hist:
+                        # User message with images - build structured content blocks
+                        message_content = build_content_blocks(content, image_urls_hist, image_captions)
+                        print(f"   📷 Built structured content with {len(image_urls_hist)} historical image(s)")
+                    elif image_captions:
+                        # User message with image captions but no URLs (legacy or caption-only)
                         captions_text = "\n[Image context: " + "; ".join(image_captions) + "]"
-                        enhanced_content = content + captions_text
+                        message_content = content + captions_text
                         print(f"   📷 Added {len(image_captions)} image caption(s)")
 
                     if file_summaries:
+                        # Add file summaries to text
                         summaries_text = "\n[File context: " + "; ".join(file_summaries) + "]"
-                        enhanced_content = enhanced_content + summaries_text
+                        if isinstance(message_content, str):
+                            message_content = message_content + summaries_text
+                        elif isinstance(message_content, list):
+                            # Update the text block in structured content
+                            message_content[0]['text'] = message_content[0]['text'] + summaries_text
                         print(f"   📄 Added {len(file_summaries)} file summary(ies)")
 
                     messages.append({
                         "role": role,
-                        "content": enhanced_content
+                        "content": message_content
                     })
                     print(f"   ✅ Added to context: {role}")
                 else:
@@ -190,6 +258,18 @@ Please analyze the content from the attached files and provide insights based on
         "temperature": 0.1,
         "messages": messages
     }
+
+    # Debug: Print message structure
+    print(f"🔍 DEBUG: Sending {len(messages)} messages to Bedrock")
+    for i, msg in enumerate(messages):
+        content_type = type(msg['content']).__name__
+        if isinstance(msg['content'], list):
+            print(f"   [{i}] {msg['role']}: {len(msg['content'])} content blocks")
+            for j, block in enumerate(msg['content']):
+                print(f"       Block {j}: type={block.get('type', 'unknown')}")
+        else:
+            preview = msg['content'][:100] if len(msg['content']) > 100 else msg['content']
+            print(f"   [{i}] {msg['role']}: {content_type} - \"{preview}...\"")
 
     try:
         response = bedrock_runtime_client.invoke_model(
@@ -276,25 +356,36 @@ def invoke_direct_llm_bedrock_stream(user_input: str, model_id: str, session_id:
 
                 if role in ['user', 'assistant'] and content:
                     # Check for attachment context (captions/summaries)
+                    image_urls_hist = msg.get('image_urls', [])
                     image_captions = msg.get('image_captions', [])
                     file_summaries = msg.get('file_summaries', [])
 
-                    # Build enhanced content with attachment context
-                    enhanced_content = content
+                    # Build content (structured blocks for user messages with images, string for others)
+                    message_content = content
 
-                    if image_captions:
+                    if role == 'user' and image_urls_hist:
+                        # User message with images - build structured content blocks
+                        message_content = build_content_blocks(content, image_urls_hist, image_captions)
+                        print(f"   📷 Built structured content with {len(image_urls_hist)} historical image(s)")
+                    elif image_captions:
+                        # User message with image captions but no URLs (legacy or caption-only)
                         captions_text = "\n[Image context: " + "; ".join(image_captions) + "]"
-                        enhanced_content = content + captions_text
+                        message_content = content + captions_text
                         print(f"   📷 Added {len(image_captions)} image caption(s)")
 
                     if file_summaries:
+                        # Add file summaries to text
                         summaries_text = "\n[File context: " + "; ".join(file_summaries) + "]"
-                        enhanced_content = enhanced_content + summaries_text
+                        if isinstance(message_content, str):
+                            message_content = message_content + summaries_text
+                        elif isinstance(message_content, list):
+                            # Update the text block in structured content
+                            message_content[0]['text'] = message_content[0]['text'] + summaries_text
                         print(f"   📄 Added {len(file_summaries)} file summary(ies)")
 
                     messages.append({
                         "role": role,
-                        "content": enhanced_content
+                        "content": message_content
                     })
                     print(f"   ✅ Added to context: {role}")
                 else:
@@ -317,6 +408,18 @@ def invoke_direct_llm_bedrock_stream(user_input: str, model_id: str, session_id:
         "temperature": 0.1,
         "messages": messages
     }
+
+    # Debug: Print message structure
+    print(f"🔍 [STREAM] DEBUG: Sending {len(messages)} messages to Bedrock")
+    for i, msg in enumerate(messages):
+        content_type = type(msg['content']).__name__
+        if isinstance(msg['content'], list):
+            print(f"   [{i}] {msg['role']}: {len(msg['content'])} content blocks")
+            for j, block in enumerate(msg['content']):
+                print(f"       Block {j}: type={block.get('type', 'unknown')}")
+        else:
+            preview = msg['content'][:100] if len(msg['content']) > 100 else msg['content']
+            print(f"   [{i}] {msg['role']}: {content_type} - \"{preview}...\"")
 
     try:
         response = bedrock_runtime_client.invoke_model_with_response_stream(

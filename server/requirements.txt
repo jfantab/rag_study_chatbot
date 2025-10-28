@@ -58,6 +58,13 @@ python-dotenv==1.1.1
 # Used for: PDF text extraction, document processing
 PyPDF2==3.0.1
 
+# ----------------------------------------------------------------------------
+# Image Processing
+# ----------------------------------------------------------------------------
+# Used for: Image format conversion (HEIC to JPEG for Bedrock compatibility)
+pillow==12.0.0
+pillow-heif==1.1.1
+
 # ============================================================================
 # Optional Dependencies (uncomment if needed)
 # ============================================================================

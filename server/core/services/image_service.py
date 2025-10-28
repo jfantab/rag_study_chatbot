@@ -63,39 +63,6 @@ def upload_image_to_s3(base64_image: str, user_id: str, chat_id: str) -> str:
         raise
 
 
-def download_s3_image_to_base64(s3_url: str) -> str:
-    """
-    Download an image from S3 URL and convert to base64.
-    """
-    try:
-        # Extract bucket and key from S3 URL
-        # Expected format: https://ragchatbotimages.s3.amazonaws.com/user_id/chat_id/filename.jpg
-        import re
-        match = re.match(r'https://([^.]+)\.s3\.amazonaws\.com/(.+)', s3_url)
-
-        if not match:
-            raise ValueError(f"Invalid S3 URL format: {s3_url}")
-
-        bucket_name = match.group(1)
-        file_key = match.group(2)
-
-        print(f"📥 Downloading image from S3: {bucket_name}/{file_key}")
-
-        # Download from S3
-        s3_client = boto3.client('s3')
-        response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
-        image_data = response['Body'].read()
-
-        # Convert to base64
-        base64_image = base64.b64encode(image_data).decode('utf-8')
-
-        print(f"✅ Downloaded and converted image to base64 ({len(base64_image)} chars)")
-        return base64_image
-
-    except Exception as e:
-        print(f"❌ Error downloading S3 image: {str(e)}")
-        raise
-
 def upload_image_endpoint(app):
     @app.route("/upload-image", methods=["POST"])
     @require_auth

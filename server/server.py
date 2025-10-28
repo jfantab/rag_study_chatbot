@@ -251,7 +251,7 @@ def chat_stream(authenticated_user_id):
         for img in image_urls:
             if img.startswith('http'):
                 try:
-                    base64_img = download_s3_image_to_base64(img)
+                    base64_img, media_type = download_s3_image_to_base64(img)
                     base64_images.append(base64_img)
                 except Exception:
                     pass  # Skip failed image downloads

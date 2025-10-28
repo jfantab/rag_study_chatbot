@@ -211,9 +211,24 @@ def cleanup_user_images(user_id: str) -> dict:
         raise
 
 
-def download_s3_image_to_base64(s3_url: str) -> str:
-    """Download an image from S3 URL and convert to base64"""
+def download_s3_image_to_base64(s3_url: str) -> tuple:
+    """
+    Download an image from S3 URL and convert to base64
+
+    Returns:
+        tuple: (base64_string, media_type) e.g. ("iVBORw0KG...", "image/jpeg")
+    """
     try:
+        from PIL import Image
+        import io
+
+        # Register HEIF plugin for HEIC support
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        except ImportError:
+            print("⚠️ pillow-heif not installed, HEIC images will not be supported")
+
         # Extract bucket and key from S3 URL
         match = re.match(r'https://([^.]+)\.s3\.amazonaws\.com/(.+)', s3_url)
 
@@ -228,9 +243,49 @@ def download_s3_image_to_base64(s3_url: str) -> str:
         response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
         image_data = response['Body'].read()
 
+        # Detect format and convert if needed
+        try:
+            img = Image.open(io.BytesIO(image_data))
+            original_format = img.format
+            print(f"📸 Original image format: {original_format}")
+
+            # Convert HEIC/HEIF or other unsupported formats to JPEG
+            if original_format in ['HEIC', 'HEIF', 'AVIF'] or original_format not in ['JPEG', 'PNG', 'GIF', 'WEBP']:
+                print(f"🔄 Converting {original_format} to JPEG for Bedrock compatibility")
+                # Convert to RGB (JPEG doesn't support RGBA)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                    img = background
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+
+                # Save as JPEG
+                output = io.BytesIO()
+                img.save(output, format='JPEG', quality=95)
+                image_data = output.getvalue()
+                media_type = 'image/jpeg'
+            else:
+                # Map PIL format to MIME type
+                format_to_mime = {
+                    'JPEG': 'image/jpeg',
+                    'PNG': 'image/png',
+                    'GIF': 'image/gif',
+                    'WEBP': 'image/webp'
+                }
+                media_type = format_to_mime.get(original_format, 'image/jpeg')
+
+        except Exception as img_error:
+            print(f"⚠️ Could not process image with PIL: {str(img_error)}, using as-is")
+            # Fallback: assume JPEG
+            media_type = 'image/jpeg'
+
         # Convert to base64
         base64_image = base64.b64encode(image_data).decode('utf-8')
-        return base64_image
+        print(f"✅ Converted image to base64 with media_type: {media_type}")
+        return base64_image, media_type
 
     except Exception as e:
         print(f"❌ Error downloading S3 image: {str(e)}")

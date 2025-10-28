@@ -40,13 +40,16 @@ def query_bedrock(question, sesh_id, user_id=None, images=None, files=None, curr
                     # Check if it's an S3 URL or already base64
                     if img.startswith('http'):
                         print(f"🔄 Converting S3 URL to base64: image {i+1}/{len(images)}")
-                        base64_img = download_s3_image_to_base64(img)
+                        base64_img, media_type = download_s3_image_to_base64(img)
+                        print(f"✅ Converted image {i+1} to base64 (media_type: {media_type})")
                         base64_images.append(base64_img)
                     else:
                         # Already base64, use as-is (legacy support)
                         base64_images.append(img)
                 except Exception as e:
                     print(f"❌ Failed to process image {i+1}: {str(e)}")
+                    import traceback
+                    print(f"❌ Traceback: {traceback.format_exc()}")
 
         # Call direct Bedrock function
         answer = retrieve_and_generate_bedrock(
@@ -84,7 +87,7 @@ def query_bedrock(question, sesh_id, user_id=None, images=None, files=None, curr
                     # Check if it's an S3 URL or already base64
                     if img.startswith('http'):
                         print(f"🔄 Converting S3 URL to base64: image {i+1}/{len(images)}")
-                        base64_img = download_s3_image_to_base64(img)
+                        base64_img, media_type = download_s3_image_to_base64(img)
                         base64_images.append(base64_img)
                     else:
                         # Already base64, use as-is (legacy support)
