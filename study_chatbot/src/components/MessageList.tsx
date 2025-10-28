@@ -26,6 +26,7 @@ interface Message {
 interface MessageListProps {
     messages: Message[];
     isLoading: boolean;
+    isEditingMessage: boolean;
     onDeleteMessage?: (messageId: number) => Promise<void>;
     onEditMessage?: (messageId: number, newContent: string) => Promise<void>;
 }
@@ -308,7 +309,7 @@ const EmptyState: React.FC = () => (
     </View>
 );
 
-const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDeleteMessage, onEditMessage }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, isEditingMessage, onDeleteMessage, onEditMessage }) => {
     const flatListRef = useRef<FlatList>(null);
     const [showCopyToast, setShowCopyToast] = useState(false);
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -317,6 +318,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDelete
     const [showImagePreview, setShowImagePreview] = useState(false);
 
     useEffect(() => {
+        // Auto-scroll to bottom when messages change or loading
         if (messages.length > 0 || isLoading) {
             setTimeout(() => {
                 flatListRef.current?.scrollToEnd({ animated: true });
@@ -367,7 +369,8 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onDelete
     );
 
     const renderFooter = () => {
-        if (!isLoading) return null;
+        // Don't show loading indicator at bottom when editing a message
+        if (!isLoading || isEditingMessage) return null;
         return <LoadingIndicator />;
     };
 

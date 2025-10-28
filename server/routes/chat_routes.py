@@ -110,8 +110,32 @@ def chat_with_retrieval(authenticated_user_id):
         # Normalize response format
         answer = normalize_response_format(answer)
 
-        # Update chat history in DynamoDB
-        update_chat_history(user_id, msg_id, question, answer, image_urls, files)
+        # Generate captions/summaries for attachments
+        image_captions = None
+        file_summaries = None
+
+        # Generate image captions if images are present
+        if image_urls and len(image_urls) > 0:
+            image_captions = []
+            # Use the first sentence(s) of AI's response as the caption
+            # This captures what the AI understood about the image
+            caption = answer.split('.')[0] + '.' if '.' in answer else answer[:200]
+            for _ in image_urls:
+                image_captions.append(caption)
+            print(f"📷 Generated {len(image_captions)} image caption(s) from AI response")
+
+        # Generate file summaries if files are present
+        if files and len(files) > 0:
+            file_summaries = []
+            for file_data in files:
+                file_name = file_data.get('name', 'unknown')
+                # Create a brief summary using file name and AI's response
+                summary = f"File '{file_name}': {answer[:300]}..." if len(answer) > 300 else f"File '{file_name}': {answer}"
+                file_summaries.append(summary)
+            print(f"📄 Generated {len(file_summaries)} file summary(ies) from AI response")
+
+        # Update chat history in DynamoDB with captions
+        update_chat_history(user_id, msg_id, question, answer, image_urls, files, image_captions, file_summaries)
 
         response = jsonify({"answer": answer})
 

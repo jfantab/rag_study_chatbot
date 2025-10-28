@@ -113,6 +113,20 @@ class AESMessageEncryption:
             if 'file_content' in encrypted_message and encrypted_message['file_content']:
                 encrypted_message['file_content'] = self.encrypt_text(encrypted_message['file_content'])
 
+            # Encrypt image captions if present
+            if 'image_captions' in encrypted_message and encrypted_message['image_captions']:
+                encrypted_captions = []
+                for caption in encrypted_message['image_captions']:
+                    encrypted_captions.append(self.encrypt_text(caption))
+                encrypted_message['image_captions'] = encrypted_captions
+
+            # Encrypt file summaries if present
+            if 'file_summaries' in encrypted_message and encrypted_message['file_summaries']:
+                encrypted_summaries = []
+                for summary in encrypted_message['file_summaries']:
+                    encrypted_summaries.append(self.encrypt_text(summary))
+                encrypted_message['file_summaries'] = encrypted_summaries
+
             return encrypted_message
         except Exception as e:
             print(f"❌ Error encrypting message content: {str(e)}")
@@ -156,6 +170,20 @@ class AESMessageEncryption:
 
                 if 'file_content' in decrypted_message and decrypted_message['file_content']:
                     decrypted_message['file_content'] = self.decrypt_text(decrypted_message['file_content'])
+
+                # Decrypt image captions if present
+                if 'image_captions' in decrypted_message and decrypted_message['image_captions']:
+                    decrypted_captions = []
+                    for caption in decrypted_message['image_captions']:
+                        decrypted_captions.append(self.decrypt_text(caption))
+                    decrypted_message['image_captions'] = decrypted_captions
+
+                # Decrypt file summaries if present
+                if 'file_summaries' in decrypted_message and decrypted_message['file_summaries']:
+                    decrypted_summaries = []
+                    for summary in decrypted_message['file_summaries']:
+                        decrypted_summaries.append(self.decrypt_text(summary))
+                    decrypted_message['file_summaries'] = decrypted_summaries
 
                 # Remove encryption flag
                 decrypted_message.pop('encrypted', None)

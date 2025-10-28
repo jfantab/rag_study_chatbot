@@ -23,6 +23,7 @@ export default function ChatScreen() {
         messages,
         inputValue,
         isLoading,
+        isEditingMessage,
         chatHistory,
         currentChatId,
         currentModelName,
@@ -97,6 +98,7 @@ export default function ChatScreen() {
                         <MessageList
                             messages={messages}
                             isLoading={isLoading}
+                            isEditingMessage={isEditingMessage}
                             onDeleteMessage={deleteMessage}
                             onEditMessage={editMessage}
                         />

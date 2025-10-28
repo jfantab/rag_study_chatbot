@@ -124,17 +124,71 @@ Please analyze the content from the attached files and provide insights based on
             except Exception as e:
                 print(f"❌ Error adding image: {str(e)}")
 
+    # Retrieve conversation history and build messages array
+    messages = []
+
+    if session_id and user_id:
+        try:
+            from .dynamodb_service import get_chat_history
+            chat_history = get_chat_history(user_id, session_id)
+            print(f"📜 Retrieved {len(chat_history)} messages from history")
+
+            # Convert chat history to messages format
+            # chat_history should be a list of dicts with 'type' and 'content' keys
+            for msg in chat_history:
+                role = msg.get('type', msg.get('role', ''))
+                content = msg.get('content', msg.get('msg', ''))
+                print(f"   Message: role={role}, content_len={len(content) if content else 0}")
+
+                # Map DynamoDB role names to Bedrock API role names
+                if role == 'human':
+                    role = 'user'
+                elif role == 'ai':
+                    role = 'assistant'
+
+                if role in ['user', 'assistant'] and content:
+                    # Check for attachment context (captions/summaries)
+                    image_captions = msg.get('image_captions', [])
+                    file_summaries = msg.get('file_summaries', [])
+
+                    # Build enhanced content with attachment context
+                    enhanced_content = content
+
+                    if image_captions:
+                        captions_text = "\n[Image context: " + "; ".join(image_captions) + "]"
+                        enhanced_content = content + captions_text
+                        print(f"   📷 Added {len(image_captions)} image caption(s)")
+
+                    if file_summaries:
+                        summaries_text = "\n[File context: " + "; ".join(file_summaries) + "]"
+                        enhanced_content = enhanced_content + summaries_text
+                        print(f"   📄 Added {len(file_summaries)} file summary(ies)")
+
+                    messages.append({
+                        "role": role,
+                        "content": enhanced_content
+                    })
+                    print(f"   ✅ Added to context: {role}")
+                else:
+                    print(f"   ❌ Skipped: role={role}, has_content={bool(content)}")
+
+            print(f"📨 Total messages in context: {len(messages)}")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not fetch chat history: {str(e)}")
+            # Continue without history if fetch fails
+
+    # Add current user message
+    messages.append({
+        "role": "user",
+        "content": user_content if len(user_content) > 1 else enhanced_input
+    })
+
     # Build request body
     body = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 2048,
         "temperature": 0.1,
-        "messages": [
-            {
-                "role": "user",
-                "content": user_content if len(user_content) > 1 else enhanced_input
-            }
-        ]
+        "messages": messages
     }
 
     try:
@@ -199,11 +253,69 @@ def invoke_direct_llm_bedrock_stream(user_input: str, model_id: str, session_id:
                 print(f"❌ Error processing image in streaming: {str(e)}")
                 # Continue processing other images
 
+    # Retrieve conversation history and build messages array
+    messages = []
+
+    if session_id and user_id:
+        try:
+            from .dynamodb_service import get_chat_history
+            chat_history = get_chat_history(user_id, session_id)
+            print(f"📜 [STREAM] Retrieved {len(chat_history)} messages from history")
+
+            # Convert chat history to messages format
+            for msg in chat_history:
+                role = msg.get('type', msg.get('role', ''))
+                content = msg.get('content', msg.get('msg', ''))
+                print(f"   Message: role={role}, content_len={len(content) if content else 0}")
+
+                # Map DynamoDB role names to Bedrock API role names
+                if role == 'human':
+                    role = 'user'
+                elif role == 'ai':
+                    role = 'assistant'
+
+                if role in ['user', 'assistant'] and content:
+                    # Check for attachment context (captions/summaries)
+                    image_captions = msg.get('image_captions', [])
+                    file_summaries = msg.get('file_summaries', [])
+
+                    # Build enhanced content with attachment context
+                    enhanced_content = content
+
+                    if image_captions:
+                        captions_text = "\n[Image context: " + "; ".join(image_captions) + "]"
+                        enhanced_content = content + captions_text
+                        print(f"   📷 Added {len(image_captions)} image caption(s)")
+
+                    if file_summaries:
+                        summaries_text = "\n[File context: " + "; ".join(file_summaries) + "]"
+                        enhanced_content = enhanced_content + summaries_text
+                        print(f"   📄 Added {len(file_summaries)} file summary(ies)")
+
+                    messages.append({
+                        "role": role,
+                        "content": enhanced_content
+                    })
+                    print(f"   ✅ Added to context: {role}")
+                else:
+                    print(f"   ❌ Skipped: role={role}, has_content={bool(content)}")
+
+            print(f"📨 [STREAM] Total messages in context: {len(messages)}")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not fetch chat history: {str(e)}")
+            # Continue without history if fetch fails
+
+    # Add current user message
+    messages.append({
+        "role": "user",
+        "content": user_content if len(user_content) > 1 else enhanced_input
+    })
+
     body = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 2048,
         "temperature": 0.1,
-        "messages": [{"role": "user", "content": user_content if len(user_content) > 1 else enhanced_input}]
+        "messages": messages
     }
 
     try:

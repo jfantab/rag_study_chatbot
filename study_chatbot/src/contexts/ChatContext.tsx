@@ -33,6 +33,7 @@ interface ChatContextType {
     messages: Message[];
     inputValue: string;
     isLoading: boolean;
+    isEditingMessage: boolean;
     chatHistory: ChatHistory[];
     currentChatId: string | null;
     currentModelName: string;
@@ -56,6 +57,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isEditingMessage, setIsEditingMessage] = useState(false);
     const [messageIdCounter, setMessageIdCounter] = useState(0);
     const [sessionId, setSessionId] = useState(generateSessionId());
     const [chatHistory, setChatHistory] = useState<ChatHistory[]>([]);
@@ -70,6 +72,8 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setAvailableModels(models);
         } catch (error) {
             console.error('Error fetching available models:', error);
+            // Don't throw - let the app continue with empty models list
+            setAvailableModels([]);
         }
     };
 
@@ -80,7 +84,8 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setCurrentModelName(modelData.current_model_name || 'Unknown Model');
         } catch (error) {
             console.error('Error loading current model:', error);
-            setCurrentModelName('Model Unavailable');
+            setCurrentModelName('Connection Error');
+            // Don't throw - let the app continue to function
         }
     };
 
@@ -88,20 +93,37 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => {
         const initialize = async () => {
             try {
-                await Promise.all([
+                // Use Promise.allSettled to allow partial success
+                const results = await Promise.allSettled([
                     refreshChatHistory(),
                     loadCurrentModel(),
                     fetchAvailableModels(),
                 ]);
 
+                // Log any failures but don't crash the app
+                results.forEach((result, index) => {
+                    if (result.status === 'rejected') {
+                        const taskNames = ['refreshChatHistory', 'loadCurrentModel', 'fetchAvailableModels'];
+                        console.error(`${taskNames[index]} failed:`, result.reason);
+                    }
+                });
+
                 // If no chat history exists, start a new chat session (but don't save it yet)
-                const chats = await getChatNames();
-                if (chats.length === 0) {
-                    // Just generate a session ID, don't create the chat yet
+                try {
+                    const chats = await getChatNames();
+                    if (chats.length === 0) {
+                        // Just generate a session ID, don't create the chat yet
+                        const newSessionId = generateSessionId();
+                        setSessionId(newSessionId);
+                        setCurrentChatId(null);
+                        console.log('No chat history found, starting new session (not saved):', newSessionId);
+                    }
+                } catch (error) {
+                    // If getChatNames fails, start a new session anyway
                     const newSessionId = generateSessionId();
                     setSessionId(newSessionId);
                     setCurrentChatId(null);
-                    console.log('No chat history found, starting new session (not saved):', newSessionId);
+                    console.log('Failed to load chat history, starting new session:', newSessionId);
                 }
             } catch (error) {
                 // If authentication fails, let the error propagate
@@ -145,6 +167,8 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setChatHistory(formattedChats);
         } catch (error) {
             console.error('Error refreshing chat history:', error);
+            // Don't show toast on initial load failures - just log the error
+            // The app can still function with an empty chat history
         }
     };
 
@@ -251,9 +275,43 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             newContent: newContent.substring(0, 50),
         });
 
+        // Save original messages for rollback on error
+        const originalMessages = [...messages];
+
         try {
-            // Show loading state while editing
-            setIsLoading(true);
+            // OPTIMISTIC UPDATE: Update UI immediately before backend call
+            console.log('🎨 Applying optimistic update to UI...');
+            const optimisticMessages = [...messages];
+
+            // Update the user message content
+            optimisticMessages[messageIndex] = {
+                ...optimisticMessages[messageIndex],
+                content: newContent,
+            };
+
+            // Replace the AI response with "Thinking..." placeholder
+            if (messageIndex + 1 < optimisticMessages.length && !optimisticMessages[messageIndex + 1].isUser) {
+                // Replace existing AI message with thinking placeholder
+                optimisticMessages[messageIndex + 1] = {
+                    ...optimisticMessages[messageIndex + 1],
+                    content: 'Thinking...',
+                };
+            } else {
+                // Add a new AI message placeholder
+                optimisticMessages.splice(messageIndex + 1, 0, {
+                    id: messageIdCounter,
+                    content: 'Thinking...',
+                    isUser: false,
+                    timestamp: new Date(),
+                });
+            }
+
+            // Apply optimistic update to UI
+            setMessages(optimisticMessages);
+            console.log('✅ UI updated optimistically with "Thinking..." placeholder');
+
+            // Mark as editing message (don't show bottom loading indicator)
+            setIsEditingMessage(true);
 
             // CRITICAL: Use backend timestamp if available (for new message table)
             // Fall back to message index for old table
@@ -294,13 +352,17 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 newContentLength: newContent.length,
             });
 
+            // ROLLBACK: Restore original messages on error
+            console.log('🔄 Rolling back to original messages due to error...');
+            setMessages(originalMessages);
+
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             showToast(`Failed to edit message: ${errorMessage}`, 'error');
 
             // Don't throw - just show the error and exit edit mode
             // The MessageItem component will handle staying in edit mode if needed
         } finally {
-            setIsLoading(false);
+            setIsEditingMessage(false);
         }
     };
 
@@ -580,6 +642,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 messages,
                 inputValue,
                 isLoading,
+                isEditingMessage,
                 chatHistory,
                 currentChatId,
                 currentModelName,

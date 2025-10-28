@@ -298,7 +298,7 @@ def query_with_session_context(question: str, msg_id: str, user_id: str, images=
             return answer["body"]["answer"]
 
 
-def update_chat_history(user_id: str, msg_id: str, question: str, answer: str, image_urls: list = None, files: list = None):
+def update_chat_history(user_id: str, msg_id: str, question: str, answer: str, image_urls: list = None, files: list = None, image_captions: list = None, file_summaries: list = None):
     """
     Update chat history in DynamoDB with the new message exchange
 
@@ -312,6 +312,8 @@ def update_chat_history(user_id: str, msg_id: str, question: str, answer: str, i
         answer: AI's answer
         image_urls: Optional list of image URLs
         files: Optional list of file data
+        image_captions: Optional list of image captions for context
+        file_summaries: Optional list of file summaries for context
 
     Returns:
         None
@@ -335,7 +337,9 @@ def update_chat_history(user_id: str, msg_id: str, question: str, answer: str, i
             message_type='human',
             content=question,
             image_urls=image_urls,
-            file_attachments=file_metadata
+            file_attachments=file_metadata,
+            image_captions=image_captions,
+            file_summaries=file_summaries
         )
 
         # Save AI response

@@ -60,7 +60,9 @@ def save_individual_message(
     content: str,
     image_urls: Optional[List[str]] = None,
     file_attachments: Optional[List[Dict[str, Any]]] = None,
-    timestamp: Optional[str] = None
+    timestamp: Optional[str] = None,
+    image_captions: Optional[List[str]] = None,
+    file_summaries: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     Save a single message as an individual DynamoDB item
@@ -73,6 +75,8 @@ def save_individual_message(
         image_urls: Optional list of image URLs (will be encrypted)
         file_attachments: Optional list of file metadata
         timestamp: Optional timestamp (defaults to current time)
+        image_captions: Optional list of image descriptions/captions for context
+        file_summaries: Optional list of file summaries for context
 
     Returns:
         Dictionary with success status and message info
@@ -100,6 +104,12 @@ def save_individual_message(
         if file_attachments:
             message_obj["file_attachments"] = file_attachments
 
+        if image_captions:
+            message_obj["image_captions"] = image_captions
+
+        if file_summaries:
+            message_obj["file_summaries"] = file_summaries
+
         # Encrypt the message content (and image URLs if present)
         encrypted_message = encryption.encrypt_message_content(message_obj)
 
@@ -120,6 +130,14 @@ def save_individual_message(
         # Add encrypted file attachments if present
         if 'file_attachments' in encrypted_message and encrypted_message['file_attachments']:
             item['file_attachments'] = {'S': json.dumps(encrypted_message['file_attachments'])}
+
+        # Add image captions if present (stored as JSON list)
+        if 'image_captions' in encrypted_message and encrypted_message['image_captions']:
+            item['image_captions'] = {'S': json.dumps(encrypted_message['image_captions'])}
+
+        # Add file summaries if present (stored as JSON list)
+        if 'file_summaries' in encrypted_message and encrypted_message['file_summaries']:
+            item['file_summaries'] = {'S': json.dumps(encrypted_message['file_summaries'])}
 
         # Add encrypted flag
         if encrypted_message.get('encrypted', False):
@@ -206,6 +224,14 @@ def get_messages_for_session(
             # Add file attachments if present
             if 'file_attachments' in item:
                 message_obj['file_attachments'] = json.loads(item['file_attachments']['S'])
+
+            # Add image captions if present
+            if 'image_captions' in item:
+                message_obj['image_captions'] = json.loads(item['image_captions']['S'])
+
+            # Add file summaries if present
+            if 'file_summaries' in item:
+                message_obj['file_summaries'] = json.loads(item['file_summaries']['S'])
 
             # Decrypt the message
             decrypted_message = encryption.decrypt_message_content(message_obj)

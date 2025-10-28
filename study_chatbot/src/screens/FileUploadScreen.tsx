@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import * as DocumentPicker from 'expo-document-picker';
+import { API_BASE_URL } from '../services/api';
 
 interface FileInfo {
     s3_key: string;
@@ -49,16 +50,7 @@ const FileUploadScreen: React.FC = () => {
 
         setIsLoading(true);
         try {
-            // Import API_BASE_URL from environment or use default
-            let baseUrl = 'http://192.168.1.105:8000';
-            try {
-                const env = await import('@env');
-                baseUrl = env.API_BASE_URL || baseUrl;
-            } catch (envError) {
-                console.log('Using default API_BASE_URL');
-            }
-
-            const response = await fetch(`${baseUrl}/list_s3_files_encrypted`, {
+            const response = await fetch(`${API_BASE_URL}/list_s3_files_encrypted`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${idToken}`,
@@ -126,15 +118,6 @@ const FileUploadScreen: React.FC = () => {
         setUploadProgress(`Uploading ${file.name}...`);
 
         try {
-            // Import API_BASE_URL from environment or use default
-            let baseUrl = 'http://192.168.1.105:8000';
-            try {
-                const env = await import('@env');
-                baseUrl = env.API_BASE_URL || baseUrl;
-            } catch (envError) {
-                console.log('Using default API_BASE_URL');
-            }
-
             // Create form data
             const formData = new FormData();
 
@@ -147,9 +130,9 @@ const FileUploadScreen: React.FC = () => {
 
             formData.append('file', fileToUpload);
 
-            console.log('Uploading to:', `${baseUrl}/upload_to_s3`);
+            console.log('Uploading to:', `${API_BASE_URL}/upload_to_s3`);
 
-            const response = await fetch(`${baseUrl}/upload_to_s3`, {
+            const response = await fetch(`${API_BASE_URL}/upload_to_s3`, {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${idToken}`,

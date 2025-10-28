@@ -155,6 +155,71 @@ def ensure_chat_sessions_table_exists():
         raise
 
 
+def get_chat_history(user_id: str, session_id: str) -> list:
+    """
+    Retrieve chat history for a session
+
+    Returns list of message dicts with 'type' (human/ai) and 'content' fields
+    Automatically handles both old and new table formats
+    """
+    # Check if using new message table
+    if use_new_message_table():
+        try:
+            from core.aws.dynamodb_messages_service import get_messages_for_session
+            messages = get_messages_for_session(user_id, session_id)
+            return messages
+        except Exception as e:
+            print(f"⚠️ Error fetching from new message table: {str(e)}")
+            return []
+
+    # Use old table format
+    try:
+        client = boto3.client('dynamodb')
+        pk = generate_user_pk(user_id)
+        sk = generate_history_sk(session_id)
+
+        response = client.get_item(
+            TableName="ChatSessions",
+            Key={'PK': {'S': pk}, 'SK': {'S': sk}}
+        )
+
+        # If not found with new format, try old format
+        if 'Item' not in response:
+            old_pk = f"CHAT#{session_id}"
+            old_sk = "HISTORY"
+            response = client.get_item(
+                TableName="ChatSessions",
+                Key={'PK': {'S': old_pk}, 'SK': {'S': old_sk}}
+            )
+
+        if 'Item' not in response:
+            return []
+
+        # Parse chat history
+        if 'ChatHistory' in response['Item']:
+            # New format with encryption
+            history_data = response['Item'].get('ChatHistory', {'S': '[]'})['S']
+            encrypted_history = json.loads(history_data)
+            chat_history = encryption.decrypt_chat_history(encrypted_history)
+        elif 'messages' in response['Item']:
+            # Old format
+            messages_str = response['Item']['messages']['S']
+            try:
+                decrypted_messages_str = encryption.decrypt_text(messages_str)
+                chat_history = json.loads(decrypted_messages_str)
+            except Exception:
+                # Try parsing as plain JSON
+                chat_history = json.loads(messages_str)
+        else:
+            return []
+
+        return chat_history
+
+    except Exception as e:
+        print(f"⚠️ Error retrieving chat history: {str(e)}")
+        return []
+
+
 def ensure_all_tables_exist():
     """
     Ensure both ChatSessions and ChatMessages tables exist
