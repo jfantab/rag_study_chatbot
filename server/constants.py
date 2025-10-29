@@ -24,6 +24,10 @@ ALLOWED_USER_EMAIL = "johnlu1161@gmail.com"
 S3_IMAGE_BUCKET = os.getenv('S3_IMAGE_BUCKET', 'ragchatbotimages')
 S3_DOCUMENT_BUCKET = os.getenv('S3_DOCUMENT_BUCKET', 'rag-doc-store')
 
+# Knowledge Base Configuration
+KNOWLEDGE_BASE_ID = os.getenv('KNOWLEDGE_BASE_ID', 'ADEGC5Q4KM')
+KB_DATA_SOURCE_ID = os.getenv('KB_DATA_SOURCE_ID')
+
 # API Gateway URLs
 BEDROCK_API_URL = "https://rf79sz38z3.execute-api.us-east-1.amazonaws.com/dev/chat"
 RAG_DOC_STORE_API_URL = "https://6vm4t63uje.execute-api.us-east-1.amazonaws.com/dev/rag-doc-store"

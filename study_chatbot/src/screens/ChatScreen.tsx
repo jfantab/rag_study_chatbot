@@ -7,8 +7,6 @@ import {
     TouchableOpacity,
     Text,
     StatusBar,
-    TouchableWithoutFeedback,
-    Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -93,23 +91,21 @@ export default function ChatScreen() {
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
             >
-                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                    <View style={styles.innerContainer}>
-                        <MessageList
-                            messages={messages}
-                            isLoading={isLoading}
-                            isEditingMessage={isEditingMessage}
-                            onDeleteMessage={deleteMessage}
-                            onEditMessage={editMessage}
-                        />
-                        <ChatInput
-                            value={inputValue}
-                            onChangeText={setInputValue}
-                            onSend={sendMessage}
-                            isLoading={isLoading}
-                        />
-                    </View>
-                </TouchableWithoutFeedback>
+                <View style={styles.innerContainer}>
+                    <MessageList
+                        messages={messages}
+                        isLoading={isLoading}
+                        isEditingMessage={isEditingMessage}
+                        onDeleteMessage={deleteMessage}
+                        onEditMessage={editMessage}
+                    />
+                    <ChatInput
+                        value={inputValue}
+                        onChangeText={setInputValue}
+                        onSend={sendMessage}
+                        isLoading={isLoading}
+                    />
+                </View>
             </KeyboardAvoidingView>
 
             {/* Sidebar for chat history */}

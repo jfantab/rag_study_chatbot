@@ -483,73 +483,198 @@ Provide a comprehensive answer that combines the relevant information, removes d
 
     def query_knowledge_base(self, user_query: str, pdf_hash: str, user_id: str) -> str:
         """
-        Query the knowledge base for a specific document
+        Query the knowledge base for a specific document using pdf_hash metadata filter
         """
         try:
+            import boto3
+            from constants import KNOWLEDGE_BASE_ID, AWS_REGION
+
             # Get document info
             doc_info = self.check_kb_document_exists(pdf_hash)
 
             if not doc_info.get('exists') or doc_info.get('status') != 'indexed':
                 raise Exception("Document not available in knowledge base")
 
-            kb_document_id = doc_info.get('kb_document_id')
+            # Query knowledge base using bedrock-agent API
+            bedrock_agent_runtime = boto3.client('bedrock-agent-runtime', region_name=AWS_REGION)
 
-            # Query knowledge base with document filter
-            payload = {
-                "question": user_query,
-                "sessionId": str(uuid.uuid4()),
-                "model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-                "filters": {
-                    "equals": {
-                        "key": "document_id",
-                        "value": kb_document_id
+            # Use pdf_hash as metadata filter
+            retrieval_config = {
+                'vectorSearchConfiguration': {
+                    'filter': {
+                        'equals': {
+                            'key': 'pdf_hash',
+                            'value': pdf_hash
+                        }
                     }
                 }
             }
 
-            response = requests.post(
-                BEDROCK_API_URL,
-                headers={'Content-Type': 'application/json'},
-                data=json.dumps(payload),
-                timeout=30
+            config = {
+                'type': 'KNOWLEDGE_BASE',
+                'knowledgeBaseConfiguration': {
+                    'knowledgeBaseId': KNOWLEDGE_BASE_ID,
+                    'modelArn': f'arn:aws:bedrock:{AWS_REGION}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0',
+                    'retrievalConfiguration': retrieval_config
+                }
+            }
+
+            print(f"🔍 Querying KB for pdf_hash: {pdf_hash}")
+
+            response = bedrock_agent_runtime.retrieve_and_generate(
+                input={'text': user_query},
+                retrieveAndGenerateConfiguration=config
             )
 
-            if response.ok:
-                result = response.json()
-                return result.get('body', {}).get('answer', 'No answer found in knowledge base.')
-            else:
-                raise Exception(f"KB query failed: {response.status_code}")
+            answer = response.get('output', {}).get('text', 'No answer found in knowledge base.')
+            print(f"✅ KB query successful, answer length: {len(answer)} chars")
+
+            return answer
 
         except Exception as e:
             print(f"❌ Error querying knowledge base: {str(e)}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
             raise
 
     def start_kb_upload_background(self, pdf_file_data, pdf_hash: str,
                                  file_metadata: Dict):
         """
         Start background knowledge base upload process
-        In a production system, this would trigger an async job
+        Uploads PDF to S3 and triggers Knowledge Base sync
         """
         try:
+            import boto3
+            import base64
+            from constants import S3_DOCUMENT_BUCKET, KNOWLEDGE_BASE_ID, KB_DATA_SOURCE_ID, AWS_REGION
+
             # Update status to uploading
             self.save_document_status(pdf_hash, 'uploading', file_metadata)
+            print(f"🚀 Starting background KB upload for document: {pdf_hash}")
 
-            # In a real implementation, this would:
-            # 1. Upload PDF to S3 with proper naming
-            # 2. Trigger Lambda function or SQS message for KB processing
-            # 3. KB processing would update the status when complete
+            # 1. Upload PDF to S3 with metadata
+            s3_client = boto3.client('s3', region_name=AWS_REGION)
 
-            # For now, we'll mark as upload initiated
-            print(f"🚀 Started background KB upload for document: {pdf_hash}")
+            # Decode base64 PDF data
+            pdf_bytes = base64.b64decode(pdf_file_data)
 
-            # TODO: Implement actual async KB upload
-            # This would involve:
-            # - S3 upload with metadata
-            # - SQS message or Lambda trigger
-            # - KB sync job processing
-            # - Status update when complete
+            # S3 key structure: pdfs/{user_id}/{pdf_hash}.pdf
+            user_id = file_metadata.get('user_id', 'unknown')
+            s3_key = f"pdfs/{user_id}/{pdf_hash}.pdf"
+
+            # Upload to S3 with metadata
+            s3_client.put_object(
+                Bucket=S3_DOCUMENT_BUCKET,
+                Key=s3_key,
+                Body=pdf_bytes,
+                ContentType='application/pdf',
+                Metadata={
+                    'pdf_hash': pdf_hash,
+                    'filename': file_metadata.get('filename', 'document.pdf'),
+                    'user_id': user_id,
+                    'upload_timestamp': file_metadata.get('upload_timestamp', ''),
+                    'estimated_tokens': str(file_metadata.get('estimated_tokens', 0))
+                }
+            )
+
+            s3_url = f"s3://{S3_DOCUMENT_BUCKET}/{s3_key}"
+            print(f"✅ Uploaded PDF to S3: {s3_url}")
+
+            # 2. Trigger Knowledge Base Data Source sync
+            if KB_DATA_SOURCE_ID:
+                bedrock_agent_client = boto3.client('bedrock-agent', region_name=AWS_REGION)
+
+                sync_response = bedrock_agent_client.start_ingestion_job(
+                    knowledgeBaseId=KNOWLEDGE_BASE_ID,
+                    dataSourceId=KB_DATA_SOURCE_ID,
+                    description=f"Ingesting PDF: {file_metadata.get('filename')} (hash: {pdf_hash})"
+                )
+
+                ingestion_job_id = sync_response['ingestionJob']['ingestionJobId']
+                print(f"✅ Started KB ingestion job: {ingestion_job_id}")
+
+                # Update document status with job ID
+                file_metadata['ingestion_job_id'] = ingestion_job_id
+                file_metadata['s3_url'] = s3_url
+                self.save_document_status(pdf_hash, 'indexing', file_metadata)
+
+                # Start polling for completion in a separate thread
+                import threading
+                poll_thread = threading.Thread(
+                    target=self._poll_ingestion_status,
+                    args=(pdf_hash, ingestion_job_id, file_metadata),
+                    daemon=True
+                )
+                poll_thread.start()
+
+            else:
+                print("⚠️  KB_DATA_SOURCE_ID not configured, skipping KB sync")
+                file_metadata['s3_url'] = s3_url
+                self.save_document_status(pdf_hash, 'uploaded_no_sync', file_metadata)
 
         except Exception as e:
             print(f"❌ Error starting KB upload: {str(e)}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
             self.save_document_status(pdf_hash, 'failed', file_metadata)
             raise
+
+    def _poll_ingestion_status(self, pdf_hash: str, ingestion_job_id: str,
+                               file_metadata: Dict):
+        """
+        Poll Knowledge Base ingestion job status until complete
+        Runs in background thread
+        """
+        import boto3
+        import time
+        from constants import KNOWLEDGE_BASE_ID, KB_DATA_SOURCE_ID, AWS_REGION
+
+        try:
+            bedrock_agent_client = boto3.client('bedrock-agent', region_name=AWS_REGION)
+
+            max_polls = 60  # Poll for up to 10 minutes (60 * 10 seconds)
+            poll_interval = 10  # seconds
+
+            for i in range(max_polls):
+                time.sleep(poll_interval)
+
+                response = bedrock_agent_client.get_ingestion_job(
+                    knowledgeBaseId=KNOWLEDGE_BASE_ID,
+                    dataSourceId=KB_DATA_SOURCE_ID,
+                    ingestionJobId=ingestion_job_id
+                )
+
+                status = response['ingestionJob']['status']
+                print(f"📊 Ingestion job {ingestion_job_id} status: {status} (poll {i+1}/{max_polls})")
+
+                if status == 'COMPLETE':
+                    print(f"✅ PDF {pdf_hash} successfully indexed in Knowledge Base!")
+                    self.save_document_status(pdf_hash, 'indexed', file_metadata)
+                    return
+
+                elif status == 'FAILED':
+                    failure_reasons = response['ingestionJob'].get('failureReasons', [])
+                    error_msg = f"Ingestion failed: {', '.join(failure_reasons)}"
+                    print(f"❌ {error_msg}")
+                    file_metadata['error'] = error_msg
+                    self.save_document_status(pdf_hash, 'failed', file_metadata)
+                    return
+
+                elif status in ['STOPPED', 'STOPPING']:
+                    print(f"⚠️  Ingestion job was stopped")
+                    self.save_document_status(pdf_hash, 'failed', file_metadata)
+                    return
+
+                # Status is IN_PROGRESS or STARTING, continue polling
+
+            # Max polls reached without completion
+            print(f"⚠️  Ingestion job timed out after {max_polls * poll_interval} seconds")
+            file_metadata['error'] = 'Ingestion timeout'
+            self.save_document_status(pdf_hash, 'indexing_timeout', file_metadata)
+
+        except Exception as e:
+            print(f"❌ Error polling ingestion status: {str(e)}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
+            file_metadata['error'] = str(e)
+            self.save_document_status(pdf_hash, 'failed', file_metadata)
