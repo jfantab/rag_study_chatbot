@@ -44,7 +44,6 @@ const FileUploadScreen: React.FC = () => {
 
     const fetchStorageFiles = async () => {
         if (!idToken) {
-            console.log('No auth token available');
             return;
         }
 
@@ -63,7 +62,6 @@ const FileUploadScreen: React.FC = () => {
             }
 
             const data = await response.json();
-            console.log('Fetched files:', data);
             setStorageFiles(data.files || []);
         } catch (error) {
             console.error('Error fetching storage files:', error);
@@ -93,12 +91,10 @@ const FileUploadScreen: React.FC = () => {
             });
 
             if (result.canceled) {
-                console.log('File selection cancelled');
                 return;
             }
 
             const file = result.assets[0];
-            console.log('Selected file:', file);
 
             // Upload the file
             await uploadFile(file);
@@ -130,8 +126,6 @@ const FileUploadScreen: React.FC = () => {
 
             formData.append('file', fileToUpload);
 
-            console.log('Uploading to:', `${API_BASE_URL}/upload_to_s3`);
-
             const response = await fetch(`${API_BASE_URL}/upload_to_s3`, {
                 method: 'POST',
                 headers: {
@@ -149,7 +143,6 @@ const FileUploadScreen: React.FC = () => {
             }
 
             const data = await response.json();
-            console.log('Upload successful:', data);
 
             Alert.alert(
                 'Success',

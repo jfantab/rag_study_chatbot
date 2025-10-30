@@ -236,7 +236,6 @@ export const refreshSession = async (): Promise<string | null> => {
     const storedRefreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
 
     if (!storedUsername || !storedRefreshToken) {
-      console.log('No username or refresh token found, cannot refresh session');
       resolve(null);
       return;
     }
@@ -274,14 +273,12 @@ export const refreshSession = async (): Promise<string | null> => {
           if (newRefreshToken) {
             await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefreshToken);
           }
-          console.log('✅ Session refreshed successfully');
           resolve(idToken);
         } catch (error) {
           console.error('Error storing refreshed token:', error);
           resolve(null);
         }
       } else {
-        console.log('Session is invalid after refresh');
         resolve(null);
       }
     });

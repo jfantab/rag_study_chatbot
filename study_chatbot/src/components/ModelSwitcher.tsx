@@ -182,7 +182,7 @@ const ModelSwitcher: React.FC<ModelSwitcherProps> = ({
                                     {category}
                                 </Text>
                                 {categoryModels.map((model) => (
-                                    <View key={model.name}>
+                                    <View key={model.id}>
                                         {renderModelItem({ item: model })}
                                     </View>
                                 ))}

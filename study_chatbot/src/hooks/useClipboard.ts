@@ -40,7 +40,7 @@ export const useClipboard = (): UseClipboardReturn => {
       if (showFeedback) {
         if (Platform.OS === 'web') {
           // For web, use alert or console
-          console.log('Copied to clipboard!');
+          alert('Copied to clipboard!');
         } else {
           Alert.alert('Success', 'Copied to clipboard!', [{ text: 'OK' }]);
         }

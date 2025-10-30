@@ -84,16 +84,7 @@ def save_individual_message(
     Cost: 1 WCU per message (vs 100s of WCUs in old read-modify-write approach)
     """
     try:
-        print(f"🔵 [SAVE_INDIVIDUAL_MESSAGE] Starting save...")
-        print(f"   - user_id: {user_id}")
-        print(f"   - session_id: {session_id}")
-        print(f"   - message_type: {message_type}")
-        print(f"   - content length: {len(content)}")
-        print(f"   - image_urls: {image_urls}")
-        print(f"   - file_attachments: {file_attachments}")
-
         client = boto3.client('dynamodb')
-        print(f"✅ [SAVE_INDIVIDUAL_MESSAGE] DynamoDB client created")
 
         # Generate keys
         pk = generate_message_pk(user_id, session_id)
@@ -153,10 +144,6 @@ def save_individual_message(
             item['encrypted'] = {'BOOL': True}
 
         # Save to DynamoDB
-        print(f"💾 [SAVE_INDIVIDUAL_MESSAGE] Writing to DynamoDB table: {MESSAGES_TABLE_NAME}")
-        print(f"   - PK: {pk}")
-        print(f"   - SK: {sk}")
-
         client.put_item(
             TableName=MESSAGES_TABLE_NAME,
             Item=item
@@ -171,9 +158,7 @@ def save_individual_message(
         }
 
     except Exception as e:
-        print(f"❌ [SAVE_INDIVIDUAL_MESSAGE] Error saving individual message: {str(e)}")
-        import traceback
-        print(f"❌ [SAVE_INDIVIDUAL_MESSAGE] Traceback:\n{traceback.format_exc()}")
+        print(f"❌ Error saving individual message: {str(e)}")
         raise
 
 

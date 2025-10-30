@@ -88,13 +88,10 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
     };
 
     const handleDelete = async () => {
-        console.log('🔴 DELETE CLICKED for message:', message.id);
         setShowMenu(false);
         if (onDelete) {
             try {
-                console.log('🔴 Calling onDelete...');
                 await onDelete(message.id);
-                console.log('✅ Delete completed successfully');
             } catch (error) {
                 console.error('❌ Delete failed:', error);
             }

@@ -121,7 +121,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
     const handleDocumentPicker = async () => {
         if (isPickingFile) {
-            console.log('⚠️ File picker already in progress, ignoring tap');
             return;
         }
 
@@ -129,8 +128,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
         setIsPickingFile(true);
 
         try {
-            console.log('📁 Opening document picker...');
-
             const documentPickerService = DocumentPickerService.getInstance();
 
             // Test functionality first
@@ -147,10 +144,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
             const file = await documentPickerService.pickDocument();
 
             if (file) {
-                console.log('✅ File selected:', file);
                 setSelectedFiles(prev => [...prev, file]);
             } else {
-                console.log('📝 File selection canceled or picker busy');
+                // File selection was canceled or the picker was busy
             }
         } catch (error: any) {
             console.error('❌ Document picker error:', error);

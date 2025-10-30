@@ -12,7 +12,7 @@ import { getIdToken } from './cognitoService';
 // For iOS simulator: use http://localhost:8000
 // For Android emulator: use http://10.0.2.2:8000
 // For physical device: use your computer's IP address
-const API_BASE_URL = ENV_API_BASE_URL || 'http://192.168.1.151:8000';
+const API_BASE_URL = ENV_API_BASE_URL;
 
 // Request timeout configuration
 const REQUEST_TIMEOUT = 120000; // 120 seconds
@@ -47,10 +47,11 @@ export interface ChatHistoryResponse {
 
 export interface ChatNamesResponse {
     chats: Array<{
-        id: string;
-        key: number;
-        name: string;
-        model_used?: string;
+        session_id: string;  // Backend returns session_id, not id
+        chat_name: string;   // Backend returns chat_name, not name
+        created_at: string;  // Backend returns ISO timestamp strings
+        updated_at: string;  // Backend returns ISO timestamp strings
+        model_id?: string;   // Backend returns model_id, not model_used
     }>;
 }
 
@@ -121,7 +122,6 @@ const getAuthHeaders = async (): Promise<HeadersInit> => {
             const payload = JSON.parse(payloadJson);
 
             if (payload.exp * 1000 < Date.now()) {
-                console.log('Token expired, flagging for refresh.');
                 needsRefresh = true;
             }
         } catch (e) {
@@ -136,7 +136,6 @@ const getAuthHeaders = async (): Promise<HeadersInit> => {
     }
 
     if (needsRefresh) {
-        console.log('Attempting to refresh session...');
         token = await refreshSession();
     }
 
@@ -174,8 +173,6 @@ const fetchWithAuth = async (
 
     // Handle 401 errors with automatic token refresh and retry
     if (response.status === 401 && retryCount === 0) {
-        console.log('🔄 Token expired, attempting to refresh session...');
-
         // If already refreshing, wait for that refresh to complete
         if (isRefreshing && refreshPromise) {
             const newToken = await refreshPromise;
@@ -197,11 +194,9 @@ const fetchWithAuth = async (
             const newToken = await refreshPromise;
 
             if (newToken) {
-                console.log('✅ Token refreshed, retrying request...');
                 // Retry the request with new token
                 return fetchWithAuth(url, options, retryCount + 1);
             } else {
-                console.log('❌ Token refresh failed, authentication required');
                 throw new Error(
                     'Authentication required. Please sign in again.'
                 );
@@ -224,8 +219,6 @@ export const uploadImage = async (
     sessionId: string
 ): Promise<string> => {
     try {
-        console.log('📤 Uploading image to S3:', imageUri);
-
         // Create form data
         const formData = new FormData();
 
@@ -264,11 +257,10 @@ export const uploadImage = async (
         }
 
         const data = await response.json();
-        console.log('✅ Image uploaded successfully:', data.s3_url);
 
         return data.s3_url;
     } catch (error) {
-        console.error('❌ Error uploading image:', error);
+        console.error('Error uploading image:', error);
         throw error;
     }
 };
@@ -285,8 +277,6 @@ export const uploadDocument = async (
     sessionId: string
 ): Promise<{ file_id: string; s3_key: string; filename: string }> => {
     try {
-        console.log('📄 Uploading document to S3:', fileName);
-
         // Create form data
         const formData = new FormData();
 
@@ -322,7 +312,6 @@ export const uploadDocument = async (
         }
 
         const data = await response.json();
-        console.log('✅ Document uploaded successfully:', data);
 
         return {
             file_id: data.file_id,
@@ -330,7 +319,7 @@ export const uploadDocument = async (
             filename: data.filename,
         };
     } catch (error) {
-        console.error('❌ Error uploading document:', error);
+        console.error('Error uploading document:', error);
         throw error;
     }
 };
@@ -353,8 +342,6 @@ export const sendChatMessage = async (
             files: files,
         };
 
-        console.log('📤 Sending chat request to Bedrock:', requestBody);
-
         const response = await fetchWithAuth(`${API_BASE_URL}/chat`, {
             method: 'POST',
             body: JSON.stringify(requestBody),
@@ -375,11 +362,10 @@ export const sendChatMessage = async (
         }
 
         const data: ChatResponse = await response.json();
-        console.log('📥 Received response from Bedrock:', data);
 
         return data.answer;
     } catch (error) {
-        console.error('❌ Error sending chat message:', error);
+        console.error('Error sending chat message:', error);
         throw error;
     }
 };
@@ -477,12 +463,6 @@ export const deleteMessage = async (
     messageIndexOrTimestamp: number | string,
     deleteNext?: boolean
 ): Promise<any> => {
-    console.log('📤 deleteMessage API called:', {
-        sessionId,
-        messageIndexOrTimestamp,
-        deleteNext,
-    });
-
     // Build request body - support both timestamp (new table) and index (old table)
     const body: any = {
         msg_id: sessionId,
@@ -492,10 +472,8 @@ export const deleteMessage = async (
     // If it's a number, use message_index
     if (typeof messageIndexOrTimestamp === 'string') {
         body.message_timestamp = messageIndexOrTimestamp;
-        console.log('   Using message_timestamp:', messageIndexOrTimestamp);
     } else {
         body.message_index = messageIndexOrTimestamp;
-        console.log('   Using message_index:', messageIndexOrTimestamp);
     }
 
     // Only include delete_next if explicitly set (allows server auto-detection)
@@ -503,27 +481,22 @@ export const deleteMessage = async (
         body.delete_next = deleteNext;
     }
 
-    console.log('📤 DELETE request body:', body);
-
     const response = await fetchWithAuth(`${API_BASE_URL}/delete_message`, {
         method: 'POST',
         body: JSON.stringify(body),
     });
 
-    console.log('📥 DELETE response status:', response.status);
-
     if (!response.ok) {
         const errorData = await response
             .json()
             .catch(() => ({ error: 'Unknown error' }));
-        console.error('❌ DELETE failed:', errorData);
+        console.error('DELETE failed:', errorData);
         throw new Error(
             `Delete message failed: ${errorData.error || response.statusText}`
         );
     }
 
     const result = await response.json();
-    console.log('✅ DELETE result:', result);
     return result;
 };
 
@@ -536,12 +509,6 @@ export const editMessage = async (
     messageIndexOrTimestamp: number | string,
     newContent: string
 ): Promise<string> => {
-    console.log('📤 editMessage API called:', {
-        sessionId,
-        messageIndexOrTimestamp,
-        newContent: newContent.substring(0, 50),
-    });
-
     // Build request body - support both timestamp (new table) and index (old table)
     const body: any = {
         msg_id: sessionId,
@@ -552,37 +519,27 @@ export const editMessage = async (
     // If it's a number, use message_index
     if (typeof messageIndexOrTimestamp === 'string') {
         body.message_timestamp = messageIndexOrTimestamp;
-        console.log('   Using message_timestamp:', messageIndexOrTimestamp);
     } else {
         body.message_index = messageIndexOrTimestamp;
-        console.log('   Using message_index:', messageIndexOrTimestamp);
     }
-
-    console.log('📤 EDIT request body:', body);
 
     const response = await fetchWithAuth(`${API_BASE_URL}/edit_message`, {
         method: 'POST',
         body: JSON.stringify(body),
     });
 
-    console.log('📥 EDIT response status:', response.status);
-
     if (!response.ok) {
         let errorData;
         const responseText = await response.text();
-        console.error('❌ EDIT failed - Response text:', responseText);
 
         try {
             errorData = JSON.parse(responseText);
         } catch (parseError) {
-            console.error(
-                '❌ Failed to parse error response as JSON:',
-                parseError
-            );
+            console.error('Failed to parse error response as JSON:', parseError);
             errorData = { error: responseText || 'Unknown error' };
         }
 
-        console.error('❌ EDIT failed - Error data:', errorData);
+        console.error('EDIT failed:', errorData);
         throw new Error(
             `Edit message failed: ${
                 errorData.error || errorData.detail || response.statusText
@@ -592,16 +549,11 @@ export const editMessage = async (
 
     let result;
     const responseText = await response.text();
-    console.log('📥 EDIT response text:', responseText);
 
     try {
         result = JSON.parse(responseText);
     } catch (parseError) {
-        console.error(
-            '❌ Failed to parse successful response as JSON:',
-            parseError
-        );
-        console.error('❌ Response was:', responseText);
+        console.error('Failed to parse successful response as JSON:', parseError);
         throw new Error(
             `Failed to parse edit response: ${
                 parseError instanceof Error
@@ -611,10 +563,8 @@ export const editMessage = async (
         );
     }
 
-    console.log('✅ EDIT result:', result);
-
     if (!result.new_ai_response) {
-        console.error('❌ No new_ai_response in result:', result);
+        console.error('No new_ai_response in result:', result);
         throw new Error('Edit succeeded but no AI response was returned');
     }
 

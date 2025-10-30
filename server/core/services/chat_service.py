@@ -317,57 +317,32 @@ def update_chat_history(user_id: str, msg_id: str, question: str, answer: str, i
     """
     from core.utils.message_utils import extract_file_metadata
 
-    print(f"📝 [UPDATE_CHAT_HISTORY] Called with:")
-    print(f"   - user_id: {user_id}")
-    print(f"   - msg_id: {msg_id}")
-    print(f"   - question: {question[:100]}..." if len(question) > 100 else f"   - question: {question}")
-    print(f"   - answer: {answer[:100]}..." if len(answer) > 100 else f"   - answer: {answer}")
-    print(f"   - image_urls: {image_urls}")
-    print(f"   - files: {files}")
-
     # Prepare file metadata if files are present
     file_metadata = None
     if files:
         file_metadata = extract_file_metadata(files)
-        print(f"   - file_metadata: {file_metadata}")
 
     print("🆕 Saving messages to ChatMessages table (one item per message)")
 
     # Save user message
-    try:
-        print(f"💾 [UPDATE_CHAT_HISTORY] Saving user message...")
-        result1 = save_individual_message(
-            user_id=user_id,
-            session_id=msg_id,
-            message_type='human',
-            content=question,
-            image_urls=image_urls,
-            file_attachments=file_metadata,
-            image_captions=image_captions,
-            file_summaries=file_summaries
-        )
-        print(f"✅ [UPDATE_CHAT_HISTORY] User message saved: {result1}")
-    except Exception as e:
-        print(f"❌ [UPDATE_CHAT_HISTORY] Failed to save user message: {str(e)}")
-        import traceback
-        print(f"❌ [UPDATE_CHAT_HISTORY] Traceback:\n{traceback.format_exc()}")
-        raise
+    save_individual_message(
+        user_id=user_id,
+        session_id=msg_id,
+        message_type='human',
+        content=question,
+        image_urls=image_urls,
+        file_attachments=file_metadata,
+        image_captions=image_captions,
+        file_summaries=file_summaries
+    )
 
     # Save AI response
-    try:
-        print(f"💾 [UPDATE_CHAT_HISTORY] Saving AI message...")
-        result2 = save_individual_message(
-            user_id=user_id,
-            session_id=msg_id,
-            message_type='ai',
-            content=answer
-        )
-        print(f"✅ [UPDATE_CHAT_HISTORY] AI message saved: {result2}")
-    except Exception as e:
-        print(f"❌ [UPDATE_CHAT_HISTORY] Failed to save AI message: {str(e)}")
-        import traceback
-        print(f"❌ [UPDATE_CHAT_HISTORY] Traceback:\n{traceback.format_exc()}")
-        raise
+    save_individual_message(
+        user_id=user_id,
+        session_id=msg_id,
+        message_type='ai',
+        content=answer
+    )
 
     print(f"✅ Saved 2 messages to ChatMessages table (Cost: 2 WCUs)")
 

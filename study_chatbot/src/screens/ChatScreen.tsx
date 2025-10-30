@@ -42,7 +42,6 @@ export default function ChatScreen() {
     const [modelSwitcherVisible, setModelSwitcherVisible] = useState(false);
 
     const handleModelChanged = (modelName: string) => {
-        console.log('Model changed to:', modelName);
         setCurrentModelName(modelName);
     };
 

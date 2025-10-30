@@ -97,11 +97,8 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // 1. Auth is still loading
         // 2. User is not authenticated
         if (authLoading || !isAuthenticated) {
-            console.log('ChatContext: Skipping initialization (authLoading:', authLoading, ', isAuthenticated:', isAuthenticated, ')');
             return;
         }
-
-        console.log('ChatContext: User authenticated, initializing...');
 
         const initialize = async () => {
             try {
@@ -128,21 +125,16 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         const newSessionId = generateSessionId();
                         setSessionId(newSessionId);
                         setCurrentChatId(null);
-                        console.log('No chat history found, starting new session (not saved):', newSessionId);
                     }
                 } catch (error) {
                     // If getChatNames fails, start a new session anyway
                     const newSessionId = generateSessionId();
                     setSessionId(newSessionId);
                     setCurrentChatId(null);
-                    console.log('Failed to load chat history, starting new session:', newSessionId);
                 }
             } catch (error) {
                 // If authentication fails, let the error propagate
                 // The user will be redirected to login via the navigation guard
-                if (error instanceof Error && error.message.includes('Authentication required')) {
-                    console.log('Authentication required, user needs to sign in');
-                }
             }
         };
 
@@ -171,10 +163,10 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         try {
             const chats = await getChatNames();
             const formattedChats: ChatHistory[] = chats.map(chat => ({
-                id: chat.id,
-                title: chat.name,
-                timestamp: new Date(chat.key), // key is timestamp in milliseconds
-                modelUsed: chat.model_used, // Include model information
+                id: chat.session_id,
+                title: chat.chat_name,
+                timestamp: new Date(chat.updated_at),
+                modelUsed: chat.model_id,
             }));
             setChatHistory(formattedChats);
         } catch (error) {
@@ -194,8 +186,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setMessages([]);
         setMessageIdCounter(0);
         loadCurrentModel(); // Reset to default model
-
-        console.log('Started new chat session (not saved yet):', newSessionId);
     };
 
     // Load an existing chat
@@ -241,8 +231,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Edit a single message
     const editMessage = async (messageId: number, newContent: string) => {
-        console.log('✏️ ChatContext.editMessage CALLED with messageId:', messageId, 'newContent:', newContent);
-
         if (!currentChatId) {
             console.error('❌ Cannot edit message without a chat ID.');
             showToast('Cannot edit message: No active chat session', 'error');
@@ -277,22 +265,11 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return;
         }
 
-        console.log('📝 Editing message:', {
-            messageId,
-            messageIndex,
-            totalMessages: messages.length,
-            hasBackendTimestamp: !!messageToEdit.backendTimestamp,
-            backendTimestamp: messageToEdit.backendTimestamp,
-            oldContent: messageToEdit.content.substring(0, 50),
-            newContent: newContent.substring(0, 50),
-        });
-
         // Save original messages for rollback on error
         const originalMessages = [...messages];
 
         try {
             // OPTIMISTIC UPDATE: Update UI immediately before backend call
-            console.log('🎨 Applying optimistic update to UI...');
             const optimisticMessages = [...messages];
 
             // Update the user message content
@@ -320,7 +297,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             // Apply optimistic update to UI
             setMessages(optimisticMessages);
-            console.log('✅ UI updated optimistically with "Thinking..." placeholder');
 
             // Mark as editing message (don't show bottom loading indicator)
             setIsEditingMessage(true);
@@ -331,16 +307,12 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             if (messageToEdit.backendTimestamp) {
                 messageIdentifier = messageToEdit.backendTimestamp;
-                console.log('📤 Using message_timestamp for edit:', messageIdentifier);
             } else {
                 messageIdentifier = messageIndex;
-                console.log('📤 Using message_index for edit:', messageIdentifier);
             }
 
             // Call the API to edit the message - this will resend and regenerate the AI response
-            console.log('📤 Sending edit request to backend (will resend and regenerate)...');
             const newAiResponse = await apiEditMessage(currentChatId, messageIdentifier, newContent);
-            console.log('✅ Server edit successful, received new AI response:', newAiResponse.substring(0, 100));
 
             // Reload messages from backend to get the updated state with regenerated response
             const apiMessages = await getChatHistory(currentChatId);
@@ -348,7 +320,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setMessages(updatedMessages);
             setMessageIdCounter(updatedMessages.length);
 
-            console.log('✅ Message edited and AI response regenerated');
             showToast('Message edited and response regenerated', 'success');
 
         } catch (error) {
@@ -365,7 +336,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
 
             // ROLLBACK: Restore original messages on error
-            console.log('🔄 Rolling back to original messages due to error...');
             setMessages(originalMessages);
 
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -380,8 +350,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Delete a single message
     const deleteMessage = async (messageId: number) => {
-        console.log('🚀 ChatContext.deleteMessage CALLED with messageId:', messageId);
-
         if (!currentChatId) {
             console.error('❌ Cannot delete message without a chat ID.');
             alert('Cannot delete message: No active chat session');
@@ -396,28 +364,11 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const messageToDelete = messages[messageIndex];
-        console.log('🗑️ Deleting message:', {
-            messageId,
-            messageIndex,
-            totalMessages: messages.length,
-            hasBackendTimestamp: !!messageToDelete.backendTimestamp,
-            backendTimestamp: messageToDelete.backendTimestamp,
-            messageContent: messageToDelete.content.substring(0, 50),
-        });
-
-        console.log('📋 All messages with timestamps:', messages.map((m, idx) => ({
-            idx,
-            id: m.id,
-            hasBackendTimestamp: !!m.backendTimestamp,
-            timestamp: m.backendTimestamp?.substring(0, 19) || 'NONE',
-            isUser: m.isUser
-        })));
 
         try {
             // CRITICAL FIX: Always reload messages from backend before deleting
             // This ensures we have the correct backend timestamps
             if (!messageToDelete.backendTimestamp) {
-                console.log('⚠️ Message missing backendTimestamp, reloading from server...');
                 try {
                     const apiMessages = await getChatHistory(currentChatId);
                     const reloadedMessages = convertApiMessages(apiMessages);
@@ -443,8 +394,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         return;
                     }
 
-                    console.log('✅ Messages reloaded, found timestamp:', reloadedMessage.backendTimestamp);
-
                     // Now delete using the correct timestamp
                     await apiDeleteMessage(currentChatId, reloadedMessage.backendTimestamp);
 
@@ -455,11 +404,8 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
             } else {
                 // Message has timestamp, proceed with delete
-                console.log('📤 Sending delete request with timestamp:', messageToDelete.backendTimestamp);
                 await apiDeleteMessage(currentChatId, messageToDelete.backendTimestamp);
             }
-
-            console.log('✅ Server delete successful, reloading messages...');
 
             // Reload messages from backend to get the updated state
             const apiMessages = await getChatHistory(currentChatId);
@@ -467,11 +413,8 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setMessages(updatedMessages);
             setMessageIdCounter(updatedMessages.length);
 
-            console.log(`✅ Message deleted and UI updated`);
-
             // If chat was deleted (no messages remaining), refresh chat history and start new chat
             if (updatedMessages.length === 0) {
-                console.log('⚠️  No messages remaining, chat will be cleaned up');
                 await refreshChatHistory();
                 await startNewChat();
                 showToast('All messages deleted. Starting a new chat.', 'info');
@@ -508,7 +451,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         try {
             // If this is the first message (no current chat ID), create the chat
             if (!currentChatId) {
-                console.log('Creating new chat with first message...');
                 // Use the first message (truncated) as the chat name
                 const chatName = message.trim().length > 50
                     ? message.trim().substring(0, 47) + '...'
@@ -516,18 +458,15 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
                 await createNewChat(sessionId, chatName);
                 setCurrentChatId(sessionId);
-                console.log('✅ Chat created:', sessionId, chatName);
             }
 
             // Upload images to S3 if any
             let imageUrls: string[] | undefined = undefined;
             if (images && images.length > 0) {
-                console.log(`📤 Uploading ${images.length} images to S3...`);
                 try {
                     imageUrls = await Promise.all(
                         images.map(imageUri => uploadImage(imageUri, sessionId))
                     );
-                    console.log('✅ All images uploaded successfully:', imageUrls);
 
                     // Update the user message with S3 URLs so images display correctly
                     setMessages(prev =>
@@ -546,7 +485,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // Upload documents to S3 and prepare for backend processing
             let filesForBackend: any[] | undefined = undefined;
             if (files && files.length > 0) {
-                console.log(`📄 Processing ${files.length} documents...`);
                 try {
                     // Step 1: Upload to S3 for persistence (in background)
                     const uploadPromises = files.map(file =>
@@ -586,7 +524,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     ]);
 
                     filesForBackend = filesWithContent;
-                    console.log('✅ Documents uploaded to S3 and prepared for processing');
 
                     // Update the user message to show files in UI
                     setMessages(prev =>
@@ -615,13 +552,11 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setMessageIdCounter(newMessageId + 2);
 
             // IMPORTANT: Reload messages from backend to get proper timestamps for delete/edit
-            console.log('🔄 Reloading messages from backend to get timestamps...');
             try {
                 const apiMessages = await getChatHistory(sessionId);
                 const reloadedMessages = convertApiMessages(apiMessages);
                 setMessages(reloadedMessages);
                 setMessageIdCounter(reloadedMessages.length);
-                console.log('✅ Messages reloaded with backend timestamps');
             } catch (reloadError) {
                 console.error('⚠️ Failed to reload messages (delete may not work):', reloadError);
                 // Continue anyway - messages are still displayed
