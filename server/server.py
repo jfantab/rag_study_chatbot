@@ -208,6 +208,7 @@ def chat_stream(authenticated_user_id):
         """Generator function for SSE streaming"""
         try:
             full_response = ""
+            print(f"🚀 [CHAT_STREAM] Starting stream for user_id={user_id}, msg_id={msg_id}")
 
             # Stream from Bedrock
             for chunk in retrieve_and_generate_bedrock_stream(
@@ -225,12 +226,25 @@ def chat_stream(authenticated_user_id):
 
             # Send completion signal
             yield f"data: {json.dumps({'done': True, 'full_text': full_response})}\n\n"
+            print(f"✅ [CHAT_STREAM] Streaming complete, full_response length: {len(full_response)}")
 
             # Save to DynamoDB (after streaming completes)
             # Use update_chat_history to respect USE_NEW_MESSAGE_TABLE setting
+            print(f"💾 [CHAT_STREAM] Saving to DynamoDB...")
+            print(f"   - user_id: {user_id}")
+            print(f"   - msg_id: {msg_id}")
+            print(f"   - question length: {len(question)}")
+            print(f"   - answer length: {len(full_response)}")
+            print(f"   - image_urls: {image_urls}")
+            print(f"   - files: {files}")
+
             update_chat_history(user_id, msg_id, question, full_response, image_urls, files)
+            print(f"✅ [CHAT_STREAM] Successfully saved to DynamoDB")
 
         except Exception as e:
+            print(f"❌ [CHAT_STREAM] Error: {str(e)}")
+            import traceback
+            print(f"❌ [CHAT_STREAM] Traceback:\n{traceback.format_exc()}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     # Return SSE response
