@@ -216,7 +216,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                             contentContainerStyle={styles.imagePreviewContent}
                         >
                             {selectedImages.map((imageUri, index) => (
-                                <View key={index} style={styles.imagePreviewWrapper}>
+                                <View key={imageUri} style={styles.imagePreviewWrapper}>
                                     <Image source={{ uri: imageUri }} style={styles.imagePreview} />
                                     <TouchableOpacity
                                         style={styles.removeImageButton}
@@ -238,7 +238,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                             contentContainerStyle={styles.filePreviewContent}
                         >
                             {selectedFiles.map((file, index) => (
-                                <View key={index} style={styles.filePreviewWrapper}>
+                                <View key={file.uri} style={styles.filePreviewWrapper}>
                                     <View style={styles.filePreview}>
                                         <Ionicons name="document-text" size={20} color="#007AFF" />
                                         <View style={styles.fileInfo}>

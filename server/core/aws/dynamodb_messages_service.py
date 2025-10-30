@@ -377,7 +377,7 @@ def ensure_chat_messages_table_exists():
 
         print(f"Creating {MESSAGES_TABLE_NAME} table...")
 
-        # Create the table with same schema as ChatSessions (PK + SK)
+        # Create the table with same schema as ChatMetadata (PK + SK)
         client.create_table(
             TableName=MESSAGES_TABLE_NAME,
             KeySchema=[

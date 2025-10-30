@@ -58,7 +58,7 @@ def save_chat_message_to_dynamodb(user_id: str, msg_id: str, question: str, answ
 
         # Get existing chat history
         response = client.get_item(
-            TableName="ChatSessions",
+            TableName="ChatMetadata",
             Key={'PK': {'S': pk}, 'SK': {'S': sk}}
         )
 
@@ -97,7 +97,7 @@ def save_chat_message_to_dynamodb(user_id: str, msg_id: str, question: str, answ
         encrypted_messages = encryption.encrypt_chat_history(messages)
 
         client.put_item(
-            TableName="ChatSessions",
+            TableName="ChatMetadata",
             Item={
                 'PK': {'S': pk},
                 'SK': {'S': sk},
@@ -121,19 +121,19 @@ def use_new_message_table() -> bool:
     return os.getenv('USE_NEW_MESSAGE_TABLE', 'false').lower() == 'true'
 
 
-def ensure_chat_sessions_table_exists():
-    """Ensure the ChatSessions DynamoDB table exists"""
+def ensure_chat_metadata_table_exists():
+    """Ensure the ChatMetadata DynamoDB table exists"""
     try:
         dynamodb = boto3.client('dynamodb')
 
         try:
-            dynamodb.describe_table(TableName='ChatSessions')
-            print("✅ ChatSessions table exists")
+            dynamodb.describe_table(TableName='ChatMetadata')
+            print("✅ ChatMetadata table exists")
         except dynamodb.exceptions.ResourceNotFoundException:
-            print("⚠️ ChatSessions table not found, creating...")
+            print("⚠️ ChatMetadata table not found, creating...")
 
             dynamodb.create_table(
-                TableName='ChatSessions',
+                TableName='ChatMetadata',
                 KeySchema=[
                     {'AttributeName': 'PK', 'KeyType': 'HASH'},
                     {'AttributeName': 'SK', 'KeyType': 'RANGE'}
@@ -147,11 +147,11 @@ def ensure_chat_sessions_table_exists():
 
             # Wait for table to be created
             waiter = dynamodb.get_waiter('table_exists')
-            waiter.wait(TableName='ChatSessions')
-            print("✅ ChatSessions table created successfully")
+            waiter.wait(TableName='ChatMetadata')
+            print("✅ ChatMetadata table created successfully")
 
     except Exception as e:
-        print(f"❌ Error ensuring ChatSessions table exists: {str(e)}")
+        print(f"❌ Error ensuring ChatMetadata table exists: {str(e)}")
         raise
 
 
@@ -179,7 +179,7 @@ def get_chat_history(user_id: str, session_id: str) -> list:
         sk = generate_history_sk(session_id)
 
         response = client.get_item(
-            TableName="ChatSessions",
+            TableName="ChatMetadata",
             Key={'PK': {'S': pk}, 'SK': {'S': sk}}
         )
 
@@ -188,7 +188,7 @@ def get_chat_history(user_id: str, session_id: str) -> list:
             old_pk = f"CHAT#{session_id}"
             old_sk = "HISTORY"
             response = client.get_item(
-                TableName="ChatSessions",
+                TableName="ChatMetadata",
                 Key={'PK': {'S': old_pk}, 'SK': {'S': old_sk}}
             )
 
@@ -222,13 +222,13 @@ def get_chat_history(user_id: str, session_id: str) -> list:
 
 def ensure_all_tables_exist():
     """
-    Ensure both ChatSessions and ChatMessages tables exist
+    Ensure both ChatMetadata and ChatMessages tables exist
 
     This function should be called on server startup
     """
     try:
-        # Ensure ChatSessions table exists (for metadata)
-        ensure_chat_sessions_table_exists()
+        # Ensure ChatMetadata table exists (for metadata)
+        ensure_chat_metadata_table_exists()
 
         # Ensure ChatMessages table exists (for individual messages)
         from core.aws.dynamodb_messages_service import ensure_chat_messages_table_exists

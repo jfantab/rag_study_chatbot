@@ -8,8 +8,14 @@ import {
   isAuthenticated as checkAuthentication,
   refreshSession,
   deleteAccount as cognitoDeleteAccount,
+  forgotPassword as cognitoForgotPassword,
+  confirmForgotPassword as cognitoConfirmForgotPassword,
+  confirmSignUp as cognitoConfirmSignUp,
+  resendConfirmationCode as cognitoResendConfirmationCode,
   SignInResponse,
   SignUpResponse,
+  ForgotPasswordResponse,
+  ConfirmSignUpResponse,
 } from '../services/cognitoService';
 
 interface User {
@@ -27,6 +33,10 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<SignUpResponse>;
   refreshAuth: () => Promise<void>;
+  forgotPassword: (username: string) => Promise<ForgotPasswordResponse>;
+  confirmForgotPassword: (username: string, verificationCode: string, newPassword: string) => Promise<ForgotPasswordResponse>;
+  confirmSignUp: (username: string, verificationCode: string) => Promise<ConfirmSignUpResponse>;
+  resendConfirmationCode: (username: string) => Promise<ConfirmSignUpResponse>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -172,6 +182,65 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const forgotPassword = async (username: string): Promise<ForgotPasswordResponse> => {
+    try {
+      const response = await cognitoForgotPassword(username);
+      return response;
+    } catch (error: any) {
+      console.error('Forgot password error:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to initiate password reset',
+      };
+    }
+  };
+
+  const confirmForgotPassword = async (
+    username: string,
+    verificationCode: string,
+    newPassword: string
+  ): Promise<ForgotPasswordResponse> => {
+    try {
+      const response = await cognitoConfirmForgotPassword(username, verificationCode, newPassword);
+      return response;
+    } catch (error: any) {
+      console.error('Confirm forgot password error:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to reset password',
+      };
+    }
+  };
+
+  const confirmSignUp = async (
+    username: string,
+    verificationCode: string
+  ): Promise<ConfirmSignUpResponse> => {
+    try {
+      const response = await cognitoConfirmSignUp(username, verificationCode);
+      return response;
+    } catch (error: any) {
+      console.error('Confirm signup error:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to verify email',
+      };
+    }
+  };
+
+  const resendConfirmationCode = async (username: string): Promise<ConfirmSignUpResponse> => {
+    try {
+      const response = await cognitoResendConfirmationCode(username);
+      return response;
+    } catch (error: any) {
+      console.error('Resend confirmation code error:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to resend verification code',
+      };
+    }
+  };
+
   const value: AuthContextType = {
     user,
     idToken,
@@ -182,6 +251,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signOut,
     deleteAccount,
     refreshAuth,
+    forgotPassword,
+    confirmForgotPassword,
+    confirmSignUp,
+    resendConfirmationCode,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

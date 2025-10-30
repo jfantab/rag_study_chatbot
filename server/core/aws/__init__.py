@@ -33,7 +33,7 @@ from .dynamodb_service import (
     generate_history_sk,
     validate_user_access,
     save_chat_message_to_dynamodb,
-    ensure_chat_sessions_table_exists
+    ensure_chat_metadata_table_exists
 )
 
 from .s3_utils import (
@@ -62,7 +62,7 @@ __all__ = [
     'generate_history_sk',
     'validate_user_access',
     'save_chat_message_to_dynamodb',
-    'ensure_chat_sessions_table_exists',
+    'ensure_chat_metadata_table_exists',
     # S3
     'download_s3_image_to_base64',
     'upload_image_to_s3',

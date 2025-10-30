@@ -9,7 +9,10 @@ import {
     KeyboardAvoidingView,
     Platform,
     ActivityIndicator,
+    TouchableWithoutFeedback,
+    Keyboard,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -28,14 +31,15 @@ interface Props {
 }
 
 export const LoginScreen: React.FC<Props> = ({ navigation }) => {
-    const [username, setUsername] = useState('johnlu1161@gmail.com');
-    const [password, setPassword] = useState('wooly!Triad123');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const { signIn } = useAuth();
 
     const handleLogin = async () => {
         if (!username.trim() || !password.trim()) {
-            Alert.alert('Error', 'Please enter both username and password');
+            Alert.alert('Error', 'Please enter both email and password');
             return;
         }
 
@@ -64,59 +68,74 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.container}
         >
-            <View style={styles.content}>
-                <Text style={styles.title}>Welcome Back</Text>
-                <Text style={styles.subtitle}>Sign in to continue</Text>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={styles.content}>
+                    <Text style={styles.title}>Welcome Back</Text>
+                    <Text style={styles.subtitle}>Sign in to continue</Text>
 
-                <View style={styles.form}>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Username"
-                        value={username}
-                        onChangeText={setUsername}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        editable={!isLoading}
-                    />
+                    <View style={styles.form}>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Username"
+                            value={username}
+                            onChangeText={setUsername}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            keyboardType="email-address"
+                            editable={!isLoading}
+                        />
 
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Password"
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        editable={!isLoading}
-                    />
+                        <View style={styles.passwordContainer}>
+                            <TextInput
+                                style={styles.passwordInput}
+                                placeholder="Password"
+                                value={password}
+                                onChangeText={setPassword}
+                                secureTextEntry={!showPassword}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                editable={!isLoading}
+                            />
+                            <TouchableOpacity
+                                style={styles.eyeIcon}
+                                onPress={() => setShowPassword(!showPassword)}
+                            >
+                                <Ionicons
+                                    name={showPassword ? 'eye-off' : 'eye'}
+                                    size={24}
+                                    color="#666"
+                                />
+                            </TouchableOpacity>
+                        </View>
 
-                    <TouchableOpacity
-                        style={[
-                            styles.button,
-                            isLoading && styles.buttonDisabled,
-                        ]}
-                        onPress={handleLogin}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? (
-                            <ActivityIndicator color="#fff" />
-                        ) : (
-                            <Text style={styles.buttonText}>Sign In</Text>
-                        )}
-                    </TouchableOpacity>
-
-                    <View style={styles.footer}>
-                        <Text style={styles.footerText}>
-                            Don't have an account?{' '}
-                        </Text>
                         <TouchableOpacity
-                            onPress={() => navigation.navigate('Signup')}
+                            style={[
+                                styles.button,
+                                isLoading && styles.buttonDisabled,
+                            ]}
+                            onPress={handleLogin}
+                            disabled={isLoading}
                         >
-                            <Text style={styles.linkText}>Sign Up</Text>
+                            {isLoading ? (
+                                <ActivityIndicator color="#fff" />
+                            ) : (
+                                <Text style={styles.buttonText}>Sign In</Text>
+                            )}
                         </TouchableOpacity>
+
+                        <View style={styles.footer}>
+                            <Text style={styles.footerText}>
+                                Don't have an account?{' '}
+                            </Text>
+                            <TouchableOpacity
+                                onPress={() => navigation.navigate('Signup')}
+                            >
+                                <Text style={styles.linkText}>Sign Up</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
-            </View>
+            </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
     );
 };
@@ -155,6 +174,33 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         borderWidth: 1,
         borderColor: '#e0e0e0',
+    },
+    passwordContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f5f5f5',
+        borderRadius: 8,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+    },
+    passwordInput: {
+        flex: 1,
+        padding: 16,
+        fontSize: 16,
+    },
+    eyeIcon: {
+        padding: 16,
+    },
+    forgotPasswordLink: {
+        alignSelf: 'flex-end',
+        marginTop: 8,
+        marginBottom: 8,
+    },
+    forgotPasswordText: {
+        color: '#007AFF',
+        fontSize: 14,
+        fontWeight: '600',
     },
     button: {
         backgroundColor: '#007AFF',

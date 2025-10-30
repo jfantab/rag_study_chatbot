@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useClipboard } from '../hooks/useClipboard';
 import ImagePreviewModal from './ImagePreviewModal';
+import { FileAttachment } from '../services/DocumentPickerService';
 
 interface Message {
     id: number;
@@ -21,6 +22,7 @@ interface Message {
     timestamp: Date;
     backendTimestamp?: string; // ISO timestamp from backend (for delete/edit operations)
     images?: string[]; // Image URIs
+    files?: FileAttachment[]; // File attachments
 }
 
 interface MessageListProps {
@@ -141,7 +143,7 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onCopySuccess, onDel
                 {message.files && message.files.length > 0 && (
                     <View style={styles.fileAttachmentsContainer}>
                         {message.files.map((file, index) => (
-                            <View key={index} style={styles.fileAttachment}>
+                            <View key={file.uri || file.file_id || `file-${index}`} style={styles.fileAttachment}>
                                 <Ionicons
                                     name="document-text"
                                     size={18}

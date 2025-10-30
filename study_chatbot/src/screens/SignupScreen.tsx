@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -31,6 +32,8 @@ export const SignupScreen: React.FC<Props> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { signUp } = useAuth();
 
   const validateEmail = (email: string): boolean => {
@@ -79,16 +82,8 @@ export const SignupScreen: React.FC<Props> = ({ navigation }) => {
       const response = await signUp(email.trim(), username.trim(), password);
 
       if (response.success) {
-        Alert.alert(
-          'Success',
-          response.message,
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.navigate('Login'),
-            },
-          ]
-        );
+        Alert.alert('Success', 'Account created successfully! Please log in.');
+        navigation.navigate('Login');
       } else {
         Alert.alert('Signup Failed', response.message);
       }
@@ -134,27 +129,51 @@ export const SignupScreen: React.FC<Props> = ({ navigation }) => {
               editable={!isLoading}
             />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isLoading}
-            />
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!isLoading}
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off' : 'eye'}
+                  size={24}
+                  color="#666"
+                />
+              </TouchableOpacity>
+            </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Confirm Password"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isLoading}
-            />
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!isLoading}
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              >
+                <Ionicons
+                  name={showConfirmPassword ? 'eye-off' : 'eye'}
+                  size={24}
+                  color="#666"
+                />
+              </TouchableOpacity>
+            </View>
 
             <Text style={styles.hint}>
               Password must be at least 8 characters with uppercase, lowercase, and numbers
@@ -178,6 +197,13 @@ export const SignupScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.linkText}>Sign In</Text>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              style={styles.backToLoginButton}
+              onPress={() => navigation.navigate('Login')}
+            >
+              <Text style={styles.backToLoginText}>Back to Login</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -224,6 +250,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 16,
+    fontSize: 16,
+  },
+  eyeIcon: {
+    padding: 16,
+  },
   hint: {
     fontSize: 12,
     color: '#666',
@@ -257,6 +300,20 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#007AFF',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  backToLoginButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  backToLoginText: {
+    color: '#007AFF',
+    fontSize: 16,
     fontWeight: '600',
   },
 });

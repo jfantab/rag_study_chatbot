@@ -82,7 +82,7 @@ const AboutScreen: React.FC<AboutScreenProps> = ({ navigation }) => {
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Key Features</Text>
                         {features.map((feature, index) => (
-                            <View key={index} style={styles.featureItem}>
+                            <View key={feature.title} style={styles.featureItem}>
                                 <View style={styles.featureIcon}>
                                     <Ionicons
                                         name={feature.icon as any}

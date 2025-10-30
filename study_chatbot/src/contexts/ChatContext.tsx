@@ -18,6 +18,7 @@ import {
 import { ChatHistory } from '../components/Sidebar';
 import { FileAttachment } from '../services/DocumentPickerService';
 import { useToast } from './ToastContext';
+import { useAuth } from './AuthContext';
 
 interface Message {
     id: number;
@@ -54,6 +55,7 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const { showToast } = useToast();
+    const { isAuthenticated, isLoading: authLoading } = useAuth();
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -89,8 +91,18 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    // Load chat history and current model on mount
+    // Load chat history and current model ONLY when authenticated
     useEffect(() => {
+        // Don't fetch anything if:
+        // 1. Auth is still loading
+        // 2. User is not authenticated
+        if (authLoading || !isAuthenticated) {
+            console.log('ChatContext: Skipping initialization (authLoading:', authLoading, ', isAuthenticated:', isAuthenticated, ')');
+            return;
+        }
+
+        console.log('ChatContext: User authenticated, initializing...');
+
         const initialize = async () => {
             try {
                 // Use Promise.allSettled to allow partial success
@@ -135,7 +147,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         initialize();
-    }, []);
+    }, [isAuthenticated, authLoading]); // Re-run when authentication status changes
 
     // Convert API messages to local Message format
     const convertApiMessages = (apiMessages: ApiMessage[]): Message[] => {

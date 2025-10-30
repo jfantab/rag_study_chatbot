@@ -36,7 +36,7 @@ def process_pdf_with_hybrid(question, pdf_files, msg_id, user_id):
         # Save the PDF hash to the chat session metadata in DynamoDB
         print(f"Associating pdf_hash: {pdf_hash} with session_id: {msg_id}")
         dynamodb = boto3.resource('dynamodb')
-        table = dynamodb.Table('ChatSessions')
+        table = dynamodb.Table('ChatMetadata')
         table.update_item(
             Key={
                 'PK': get_chat_pk(user_id),

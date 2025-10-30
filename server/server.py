@@ -9,7 +9,6 @@ from flask_cors import CORS
 from setup import setup
 from constants import *
 import boto3
-from botocore.exceptions import ClientError
 from core.services.encryption import encryption
 from core.services.auth_service import *
 from core.aws.bedrock_service import *
@@ -162,65 +161,14 @@ def get_current_model():
 @app.route("/get_chat_names", methods=["GET"])
 @require_auth
 def get_chat_names(authenticated_user_id):
-    user_id = authenticated_user_id  # Use authenticated user ID from JWT
+    """Get list of chat sessions for the authenticated user"""
+    from core.services.chat_service import get_chat_list
+
+    user_id = authenticated_user_id
 
     try:
-        client = boto3.client('dynamodb')
-        
-        # Query for all chat metadata for this user using the main table
-        # Use PK = USER#user_id and SK begins_with CHAT# to get all chats for user
-        pk = generate_user_pk(user_id)
-        
-        response = client.query(
-            TableName='ChatSessions',
-            KeyConditionExpression='PK = :pk AND begins_with(SK, :sk_prefix)',
-            FilterExpression='entity_type = :entity_type',
-            ExpressionAttributeValues={
-                ':pk': {'S': pk},
-                ':sk_prefix': {'S': 'CHAT#'},
-                ':entity_type': {'S': 'chat_metadata'}
-            },
-            ScanIndexForward=False  # Descending order (newest first)
-        )
-
-        arr = []
-        if 'Items' in response and response['Items']:
-            for item in response['Items']:
-                # Extract session_id from SK (format: CHAT#session_123)
-                sk_value = item['SK']['S']
-                session_id = sk_value.split('#', 1)[1] if '#' in sk_value else sk_value
-                
-                encrypted_chat_name = item.get('chat_name', {}).get('S', f'Chat {session_id}')
-
-                # Get timestamp from created_at or use index
-                timestamp_ms = item.get('created_at', {}).get('N', str(int(time.time() * 1000)))
-
-                try:
-                    # Try to decrypt the chat name, fallback to timestamp-based name if decryption fails
-                    decrypted_name = encryption.decrypt_chat_name(encrypted_chat_name)
-                except Exception as e:
-                    # Use timestamp-based placeholder name instead of encrypted gibberish
-                    try:
-                        from datetime import datetime
-                        ts = int(timestamp_ms) / 1000
-                        dt = datetime.fromtimestamp(ts)
-                        decrypted_name = f"Chat {dt.strftime('%Y-%m-%d %H:%M')}"
-                    except:
-                        decrypted_name = f"Chat (encrypted)"
-
-                # Get model_used if available
-                model_used = item.get('model_used', {}).get('S', None)
-
-                obj = {
-                    "id": session_id,
-                    "key": int(timestamp_ms),  # Use actual timestamp instead of index
-                    "name": decrypted_name,
-                    "model_used": model_used,  # Include model information
-                }
-                arr.append(obj)
-
-        return jsonify({"chats": arr}), 200
-        
+        chats = get_chat_list(user_id)
+        return jsonify({"chats": chats}), 200
     except Exception as e:
         print(f"Error getting chat names: {str(e)}")
         # Return empty array instead of error to prevent client-side errors
@@ -301,173 +249,57 @@ def chat_stream(authenticated_user_id):
 @app.route("/retrieve_messages", methods=["GET"])
 @require_auth
 def retrieve_messages(authenticated_user_id):
-    from core.aws.dynamodb_service import use_new_message_table
+    """Retrieve chat messages for a session (uses new ChatMessages table)"""
     from core.aws.dynamodb_messages_service import get_messages_for_session
 
-    msgs_id = request.args.get('msgId', default = "")
-    user_id = authenticated_user_id  # Use authenticated user ID from JWT
-
-    # If new message table is enabled, try it first with fallback to old table
-    if use_new_message_table():
-        try:
-            # Query the new message table
-            chat_history = get_messages_for_session(user_id, msgs_id)
-
-            if chat_history and len(chat_history) > 0:
-                # Convert to expected format for frontend
-                msgs = []
-                s3_client = boto3.client('s3')
-
-                for msg in chat_history:
-                    formatted_msg = {
-                        "role": msg.get("type", ""),
-                        "msg": msg.get("content", ""),
-                        "timestamp": msg.get("timestamp", "")  # Include timestamp for edit/delete
-                    }
-
-                    # Add image URLs if present - convert to presigned URLs
-                    if "image_urls" in msg:
-                        presigned_urls = []
-                        for s3_url in msg["image_urls"]:
-                            try:
-                                import re
-                                match = re.match(r'https://([^.]+)\.s3\.amazonaws\.com/(.+)', s3_url)
-                                if match:
-                                    bucket_name = match.group(1)
-                                    file_key = match.group(2)
-
-                                    presigned_url = s3_client.generate_presigned_url(
-                                        'get_object',
-                                        Params={'Bucket': bucket_name, 'Key': file_key},
-                                        ExpiresIn=3600
-                                    )
-                                    presigned_urls.append(presigned_url)
-                                else:
-                                    presigned_urls.append(s3_url)
-                            except Exception:
-                                presigned_urls.append(s3_url)
-
-                        formatted_msg["image_urls"] = presigned_urls
-
-                    # Add file attachments if present
-                    if "file_attachments" in msg:
-                        formatted_msg["file_attachments"] = msg["file_attachments"]
-
-                    msgs.append(formatted_msg)
-
-                return jsonify({"msgs": msgs}), 200
-            else:
-                pass  # Fall back to old table
-
-        except Exception:
-            pass  # Fall back to old table
-
-    # Fallback to old table (or primary path if USE_NEW_MESSAGE_TABLE=false)
-
-    client = boto3.client('dynamodb')
-
-    # Try NEW format first: PK=USER#{user_id}, SK=HISTORY#{msg_id}
-    pk = generate_user_pk(user_id)
-    sk = generate_history_sk(msgs_id)
+    msgs_id = request.args.get('msgId', default="")
+    user_id = authenticated_user_id
 
     try:
-        response = client.get_item(
-            TableName="ChatSessions",
-            Key={
-                'PK': {'S': pk},
-                'SK': {'S': sk}
-            }
-        )
+        # Query the ChatMessages table
+        chat_history = get_messages_for_session(user_id, msgs_id)
 
-        # If not found, try OLD format: PK=CHAT#{msg_id}, SK=HISTORY
-        if 'Item' not in response:
-            old_pk = f"CHAT#{msgs_id}"
-            old_sk = "HISTORY"
-
-            response = client.get_item(
-                TableName="ChatSessions",
-                Key={
-                    'PK': {'S': old_pk},
-                    'SK': {'S': old_sk}
-                }
-            )
-
-            if 'Item' not in response:
-                return jsonify({"msgs": []}), 200
-
-        # Handle both ChatHistory (new) and messages (old) field names
-        chat_history = None
-
-        if 'ChatHistory' in response['Item']:
-            # NEW format - ChatHistory field with per-message encryption
-            try:
-                history_data = response['Item'].get('ChatHistory', {'S': '[]'})['S']
-                encrypted_history = json.loads(history_data)
-                chat_history = encryption.decrypt_chat_history(encrypted_history)
-            except Exception:
-                # Return empty messages instead of failing completely
-                return jsonify({
-                    "msgs": [],
-                    "error": "Decryption failed - encryption key mismatch",
-                    "details": "The data was encrypted with a different key. Check CHAT_ENCRYPTION_KEY environment variable."
-                }), 200
-        elif 'messages' in response['Item']:
-            # OLD format - entire messages string encrypted
-            messages_str = response['Item']['messages']['S']
-            try:
-                # Try to decrypt as text first (old encryption method)
-                decrypted_messages_str = encryption.decrypt_text(messages_str)
-                chat_history = json.loads(decrypted_messages_str)
-            except Exception:
-                # If decryption fails, try parsing as plain JSON (unencrypted legacy data)
-                try:
-                    chat_history = json.loads(messages_str)
-                except Exception:
-                    return jsonify({
-                        "msgs": [],
-                        "error": "Failed to decrypt or parse messages",
-                        "details": "Data may be corrupted or encrypted with wrong key"
-                    }), 200
-        else:
+        if not chat_history:
             return jsonify({"msgs": []}), 200
 
-        # Convert to expected format and ensure user message comes first in each pair
+        # Convert to expected format for frontend
         msgs = []
         s3_client = boto3.client('s3')
 
         for msg in chat_history:
-            # Handle both old format (msg/role) and new format (content/type)
             formatted_msg = {
-                "role": msg.get("type", msg.get("role", "")),
-                "msg": msg.get("content", msg.get("msg", ""))
+                "role": msg.get("type", ""),
+                "msg": msg.get("content", ""),
+                "timestamp": msg.get("timestamp", "")  # Include timestamp for edit/delete
             }
-            # Add image URLs if present - convert to presigned URLs for secure access
+
+            # Add image URLs if present - convert to presigned URLs
             if "image_urls" in msg:
                 presigned_urls = []
                 for s3_url in msg["image_urls"]:
                     try:
-                        # Extract bucket and key from S3 URL
-                        import re
                         match = re.match(r'https://([^.]+)\.s3\.amazonaws\.com/(.+)', s3_url)
                         if match:
                             bucket_name = match.group(1)
                             file_key = match.group(2)
 
-                            # Generate presigned URL (valid for 1 hour)
                             presigned_url = s3_client.generate_presigned_url(
                                 'get_object',
                                 Params={'Bucket': bucket_name, 'Key': file_key},
-                                ExpiresIn=3600  # 1 hour
+                                ExpiresIn=3600
                             )
                             presigned_urls.append(presigned_url)
                         else:
-                            # Invalid format, use original URL
                             presigned_urls.append(s3_url)
                     except Exception:
-                        # Fallback to original URL
                         presigned_urls.append(s3_url)
 
                 formatted_msg["image_urls"] = presigned_urls
+
+            # Add file attachments if present
+            if "file_attachments" in msg:
+                formatted_msg["file_attachments"] = msg["file_attachments"]
+
             msgs.append(formatted_msg)
 
         return jsonify({"msgs": msgs}), 200
@@ -475,44 +307,6 @@ def retrieve_messages(authenticated_user_id):
     except Exception as e:
         print(f"Error retrieving messages: {str(e)}")
         return jsonify({"error": "Failed to retrieve messages"}), 500
-
-""" DynamoDB Table Setup """
-def ensure_chat_sessions_table_exists():
-    """Create ChatSessions table if it doesn't exist"""
-    try:
-        client = boto3.client('dynamodb')
-
-        # Check if table exists
-        try:
-            client.describe_table(TableName='ChatSessions')
-            return True
-        except ClientError as e:
-            if e.response['Error']['Code'] != 'ResourceNotFoundException':
-                raise e
-
-        # Create the table
-        client.create_table(
-            TableName='ChatSessions',
-            KeySchema=[
-                {'AttributeName': 'PK', 'KeyType': 'HASH'},
-                {'AttributeName': 'SK', 'KeyType': 'RANGE'}
-            ],
-            AttributeDefinitions=[
-                {'AttributeName': 'PK', 'AttributeType': 'S'},
-                {'AttributeName': 'SK', 'AttributeType': 'S'}
-            ],
-            BillingMode='PAY_PER_REQUEST'
-        )
-
-        # Wait for table to be created
-        waiter = client.get_waiter('table_exists')
-        waiter.wait(TableName='ChatSessions')
-
-        return True
-
-    except Exception as e:
-        print(f"Error ensuring ChatSessions table exists: {str(e)}")
-        return False
 
 if __name__ == "__main__":
     from core.aws.dynamodb_service import ensure_all_tables_exist

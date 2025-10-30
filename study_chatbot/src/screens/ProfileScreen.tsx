@@ -39,7 +39,10 @@ const ProfileScreen: React.FC<ProfileScreenProps> = () => {
                     try {
                         await signOut();
                     } catch (error: any) {
-                        Alert.alert('Error', error.message || 'Failed to logout');
+                        Alert.alert(
+                            'Error',
+                            error.message || 'Failed to logout'
+                        );
                     } finally {
                         setIsLoading(false);
                     }
@@ -65,12 +68,18 @@ const ProfileScreen: React.FC<ProfileScreenProps> = () => {
                         try {
                             const response = await deleteAccount();
                             if (response.success) {
-                                Alert.alert('Success', 'Your account has been deleted');
+                                Alert.alert(
+                                    'Success',
+                                    'Your account has been deleted'
+                                );
                             } else {
                                 Alert.alert('Error', response.message);
                             }
                         } catch (error: any) {
-                            Alert.alert('Error', error.message || 'Failed to delete account');
+                            Alert.alert(
+                                'Error',
+                                error.message || 'Failed to delete account'
+                            );
                         } finally {
                             setIsLoading(false);
                         }
@@ -98,7 +107,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = () => {
                 <View style={styles.avatarContainer}>
                     <Ionicons name="person-circle" size={80} color="#007AFF" />
                 </View>
-                <Text style={styles.username}>{user?.username || 'Profile'}</Text>
+                <Text style={styles.username}>{'Profile'}</Text>
                 <Text style={styles.email}>{user?.email || 'No email'}</Text>
             </View>
 
@@ -117,7 +126,10 @@ const ProfileScreen: React.FC<ProfileScreenProps> = () => {
                     <Ionicons name="chevron-forward" size={20} color="#999" />
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.menuItem} onPress={handleDeleteAccount}>
+                <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={handleDeleteAccount}
+                >
                     <View style={styles.menuItemLeft}>
                         <Ionicons
                             name="trash-outline"

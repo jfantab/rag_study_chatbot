@@ -37,7 +37,7 @@ def create_new_chat(user_id: str, msg_id: str, chat_name: str, model_id: str) ->
     """
     try:
         dynamodb = boto3.resource('dynamodb')
-        table = dynamodb.Table('ChatSessions')
+        table = dynamodb.Table('ChatMetadata')
 
         current_time = get_current_timestamp()
 
@@ -82,7 +82,7 @@ def delete_chat_session(user_id: str, msg_id: str) -> dict:
         Dictionary with success status and message
     """
     client = boto3.client('dynamodb')
-    table_name = 'ChatSessions'
+    table_name = 'ChatMetadata'
 
     # Define keys for both new and old formats
     chat_metadata_key = {
@@ -196,9 +196,9 @@ def query_with_session_context(question: str, msg_id: str, user_id: str, images=
                 answer = json.loads(answer) if isinstance(answer, str) else answer
                 return answer["body"]["answer"]
 
-        # 1. Get associated_pdf_hash from ChatSessions table
+        # 1. Get associated_pdf_hash from ChatMetadata table
         dynamodb = boto3.resource('dynamodb')
-        table = dynamodb.Table('ChatSessions')
+        table = dynamodb.Table('ChatMetadata')
 
         response = table.get_item(
             Key={
@@ -300,10 +300,7 @@ def query_with_session_context(question: str, msg_id: str, user_id: str, images=
 
 def update_chat_history(user_id: str, msg_id: str, question: str, answer: str, image_urls: list = None, files: list = None, image_captions: list = None, file_summaries: list = None):
     """
-    Update chat history in DynamoDB with the new message exchange
-
-    Supports both old (single item) and new (one-item-per-message) approaches based on
-    USE_NEW_MESSAGE_TABLE environment variable.
+    Update chat history in DynamoDB using one-item-per-message approach
 
     Args:
         user_id: User ID who owns the chat
@@ -318,7 +315,6 @@ def update_chat_history(user_id: str, msg_id: str, question: str, answer: str, i
     Returns:
         None
     """
-    from core.aws.dynamodb_service import generate_user_pk, generate_history_sk
     from core.utils.message_utils import extract_file_metadata
 
     # Prepare file metadata if files are present
@@ -326,83 +322,29 @@ def update_chat_history(user_id: str, msg_id: str, question: str, answer: str, i
     if files:
         file_metadata = extract_file_metadata(files)
 
-    # If new message table is enabled, use one-item-per-message approach
-    if use_new_message_table():
-        print("🆕 Using new message-based table (one item per message)")
+    print("🆕 Saving messages to ChatMessages table (one item per message)")
 
-        # Save user message
-        save_individual_message(
-            user_id=user_id,
-            session_id=msg_id,
-            message_type='human',
-            content=question,
-            image_urls=image_urls,
-            file_attachments=file_metadata,
-            image_captions=image_captions,
-            file_summaries=file_summaries
-        )
+    # Save user message
+    save_individual_message(
+        user_id=user_id,
+        session_id=msg_id,
+        message_type='human',
+        content=question,
+        image_urls=image_urls,
+        file_attachments=file_metadata,
+        image_captions=image_captions,
+        file_summaries=file_summaries
+    )
 
-        # Save AI response
-        save_individual_message(
-            user_id=user_id,
-            session_id=msg_id,
-            message_type='ai',
-            content=answer
-        )
+    # Save AI response
+    save_individual_message(
+        user_id=user_id,
+        session_id=msg_id,
+        message_type='ai',
+        content=answer
+    )
 
-        print(f"✅ Saved 2 messages to new message table (Cost: 2 WCUs)")
-
-    else:
-        # Use old approach: read-modify-write entire history
-        print("📦 Using old approach (entire history in one item)")
-
-        client = boto3.client('dynamodb')
-        pk = generate_user_pk(user_id)
-        sk = generate_history_sk(msg_id)
-
-        # Get existing chat history
-        try:
-            response = client.get_item(
-                TableName="ChatSessions",
-                Key={'PK': {'S': pk}, 'SK': {'S': sk}}
-            )
-
-            if 'Item' in response:
-                encrypted_history = json.loads(response['Item'].get('ChatHistory', {'S': '[]'})['S'])
-                # Decrypt the chat history before processing
-                existing_history = encryption.decrypt_chat_history(encrypted_history)
-            else:
-                existing_history = []
-
-        except Exception:
-            existing_history = []
-
-        # Add user message first, then AI message (ensures user message comes first)
-        user_message = {"type": "human", "content": question}
-        if image_urls:
-            user_message["image_urls"] = image_urls
-        if file_metadata:
-            user_message["file_attachments"] = file_metadata
-
-        existing_history.append(user_message)
-        existing_history.append({"type": "ai", "content": answer})
-
-        # Encrypt chat history before storing
-        encrypted_history = encryption.encrypt_chat_history(existing_history)
-
-        # Update the chat history record
-        client.put_item(
-            TableName="ChatSessions",
-            Item={
-                'PK': {'S': pk},
-                'SK': {'S': sk},
-                'ChatHistory': {'S': json.dumps(encrypted_history)},
-                'entity_type': {'S': 'chat_history'},
-                'updated_at': {'S': datetime.now().isoformat()}
-            }
-        )
-
-        print(f"✅ Saved entire history to old table (Cost: {len(encrypted_history)} WCUs)")
+    print(f"✅ Saved 2 messages to ChatMessages table (Cost: 2 WCUs)")
 
 
 def delete_message_from_history(user_id: str, msg_id: str, message_index: int = None, message_timestamp: str = None, delete_next: bool = None) -> dict:
@@ -531,7 +473,7 @@ def delete_message_from_history(user_id: str, msg_id: str, message_index: int = 
             # Get existing chat history
             try:
                 response = client.get_item(
-                    TableName="ChatSessions",
+                    TableName="ChatMetadata",
                     Key={'PK': {'S': pk}, 'SK': {'S': sk}}
                 )
 
@@ -585,7 +527,7 @@ def delete_message_from_history(user_id: str, msg_id: str, message_index: int = 
 
             # Update the chat history in DynamoDB
             client.put_item(
-                TableName="ChatSessions",
+                TableName="ChatMetadata",
                 Item={
                     'PK': {'S': pk},
                     'SK': {'S': sk},
@@ -766,7 +708,7 @@ def edit_message_and_regenerate(user_id: str, msg_id: str, message_index: int = 
             # Get existing chat history
             try:
                 response = client.get_item(
-                    TableName="ChatSessions",
+                    TableName="ChatMetadata",
                     Key={'PK': {'S': pk}, 'SK': {'S': sk}}
                 )
 
@@ -822,7 +764,7 @@ def edit_message_and_regenerate(user_id: str, msg_id: str, message_index: int = 
 
             # Update the chat history in DynamoDB
             client.put_item(
-                TableName="ChatSessions",
+                TableName="ChatMetadata",
                 Item={
                     'PK': {'S': pk},
                     'SK': {'S': sk},
@@ -842,3 +784,57 @@ def edit_message_and_regenerate(user_id: str, msg_id: str, message_index: int = 
         except Exception as e:
             print(f"Error editing message: {str(e)}")
             raise
+
+
+def get_chat_list(user_id: str) -> list:
+    """
+    Get list of all chat sessions for a user with metadata
+
+    Args:
+        user_id: User ID to fetch chats for
+
+    Returns:
+        List of chat dictionaries with session_id, chat_name, and timestamps
+    """
+    try:
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table('ChatMetadata')
+
+        # Query all chat metadata for this user
+        response = table.query(
+            KeyConditionExpression='PK = :pk AND begins_with(SK, :sk_prefix)',
+            ExpressionAttributeValues={
+                ':pk': get_chat_pk(user_id),
+                ':sk_prefix': 'CHAT#'
+            }
+        )
+
+        chats = []
+        for item in response.get('Items', []):
+            # Decrypt chat name if encrypted
+            chat_name = item.get('chat_name', 'Untitled Chat')
+            try:
+                chat_name = encryption.decrypt_chat_name(chat_name)
+            except Exception:
+                # If decryption fails, use as-is (might be unencrypted legacy data)
+                pass
+
+            # Extract session_id from SK (format: CHAT#{session_id})
+            session_id = item.get('SK', '').replace('CHAT#', '')
+
+            chats.append({
+                'session_id': session_id,
+                'chat_name': chat_name,
+                'created_at': item.get('created_at', ''),
+                'updated_at': item.get('updated_at', ''),
+                'model_id': item.get('model_id', '')
+            })
+
+        # Sort by updated_at (most recent first)
+        chats.sort(key=lambda x: x.get('updated_at', ''), reverse=True)
+
+        return chats
+
+    except Exception as e:
+        print(f"Error fetching chat list: {str(e)}")
+        return []

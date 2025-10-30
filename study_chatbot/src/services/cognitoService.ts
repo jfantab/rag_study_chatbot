@@ -44,6 +44,16 @@ export interface SignInResponse {
   };
 }
 
+export interface ForgotPasswordResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface ConfirmSignUpResponse {
+  success: boolean;
+  message: string;
+}
+
 /**
  * Sign up a new user with Cognito
  */
@@ -320,6 +330,127 @@ export const deleteAccount = async (): Promise<SignUpResponse> => {
           success: true,
           message: 'Account deleted successfully',
         });
+      });
+    });
+  });
+};
+
+/**
+ * Initiate forgot password flow
+ */
+export const forgotPassword = async (username: string): Promise<ForgotPasswordResponse> => {
+  return new Promise((resolve) => {
+    const cognitoUser = new CognitoUser({
+      Username: username,
+      Pool: userPool,
+    });
+
+    cognitoUser.forgotPassword({
+      onSuccess: () => {
+        resolve({
+          success: true,
+          message: 'Verification code sent to your email',
+        });
+      },
+      onFailure: (err) => {
+        console.error('Forgot password error:', err);
+        resolve({
+          success: false,
+          message: err.message || 'Failed to initiate password reset',
+        });
+      },
+    });
+  });
+};
+
+/**
+ * Confirm forgot password with verification code
+ */
+export const confirmForgotPassword = async (
+  username: string,
+  verificationCode: string,
+  newPassword: string
+): Promise<ForgotPasswordResponse> => {
+  return new Promise((resolve) => {
+    const cognitoUser = new CognitoUser({
+      Username: username,
+      Pool: userPool,
+    });
+
+    cognitoUser.confirmPassword(verificationCode, newPassword, {
+      onSuccess: () => {
+        resolve({
+          success: true,
+          message: 'Password reset successfully',
+        });
+      },
+      onFailure: (err) => {
+        console.error('Confirm password error:', err);
+        resolve({
+          success: false,
+          message: err.message || 'Failed to reset password',
+        });
+      },
+    });
+  });
+};
+
+/**
+ * Confirm user signup with verification code
+ */
+export const confirmSignUp = async (
+  username: string,
+  verificationCode: string
+): Promise<ConfirmSignUpResponse> => {
+  return new Promise((resolve) => {
+    const cognitoUser = new CognitoUser({
+      Username: username,
+      Pool: userPool,
+    });
+
+    cognitoUser.confirmRegistration(verificationCode, true, (err, result) => {
+      if (err) {
+        console.error('Confirm signup error:', err);
+        resolve({
+          success: false,
+          message: err.message || 'Failed to verify email',
+        });
+        return;
+      }
+
+      resolve({
+        success: true,
+        message: 'Email verified successfully',
+      });
+    });
+  });
+};
+
+/**
+ * Resend confirmation code
+ */
+export const resendConfirmationCode = async (
+  username: string
+): Promise<ConfirmSignUpResponse> => {
+  return new Promise((resolve) => {
+    const cognitoUser = new CognitoUser({
+      Username: username,
+      Pool: userPool,
+    });
+
+    cognitoUser.resendConfirmationCode((err, result) => {
+      if (err) {
+        console.error('Resend confirmation code error:', err);
+        resolve({
+          success: false,
+          message: err.message || 'Failed to resend verification code',
+        });
+        return;
+      }
+
+      resolve({
+        success: true,
+        message: 'Verification code sent to your email',
       });
     });
   });

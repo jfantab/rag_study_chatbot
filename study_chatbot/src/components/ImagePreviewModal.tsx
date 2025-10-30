@@ -83,7 +83,7 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
             onStartShouldSetResponder={() => true}
           >
             {images.map((imageUri, index) => (
-              <View key={index} style={[styles.imageContainer, { width: screenWidth }]}>
+              <View key={imageUri} style={[styles.imageContainer, { width: screenWidth }]}>
                 <TouchableOpacity
                   activeOpacity={1}
                   onPress={(e) => e.stopPropagation()}
@@ -102,9 +102,9 @@ const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
           {/* Navigation indicators */}
           {images.length > 1 && (
             <View style={styles.indicatorContainer}>
-              {images.map((_, index) => (
+              {images.map((imageUri, index) => (
                 <View
-                  key={index}
+                  key={`indicator-${imageUri}`}
                   style={[
                     styles.indicator,
                     index === currentIndex && styles.indicatorActive,
