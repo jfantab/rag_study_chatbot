@@ -2,6 +2,8 @@
 
 A full-stack mobile application featuring an AI-powered chatbot with Retrieval-Augmented Generation (RAG) capabilities. The application combines a React Native mobile frontend with a Python Flask backend, leveraging AWS services for authentication, storage, and AI inference.
 
+[App Store Link](https://apps.apple.com/us/app/ai-buddy-study-and-chat/id6754720327)
+
 ## Overview
 
 This project consists of two main components:
